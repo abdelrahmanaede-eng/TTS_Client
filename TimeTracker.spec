@@ -1,5 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import re
+
+# Java JDKs may ship copies of Windows API-set DLLs in their bin directory.
+# PyInstaller can mistake those shims for app dependencies and bundle them.
+os.environ["PATH"] = os.pathsep.join(
+    entry
+    for entry in os.environ.get("PATH", "").split(os.pathsep)
+    if not re.search(r"(?:^|[\\/])jdk-[^\\/]+[\\/]bin[\\/]?$", entry, re.IGNORECASE)
+)
 
 a = Analysis(
     ['main.py'],

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 VALID_DAYS = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 TIME_REGEX = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-APP_VERSION = "1.3.8"
+APP_VERSION = "1.4.2"
 DEFAULT_UPDATE_SOURCE = "https://raw.githubusercontent.com/abdelrahmanaede-eng/TimeTracker-Updates/main/version.json"
 
 #: Levels accepted by ``logging_setup`` / ``log_level`` in config.json.

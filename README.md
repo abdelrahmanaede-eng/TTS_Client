@@ -166,6 +166,7 @@ Run `python main.py --dashboard` (or `-d`) to build and open the visual dashboar
 Double-click `build_installer.bat` (or run `build_installer.bat` from terminal).
 It automatically:
 1. Compiles the latest code into `TimeTracker.exe`.
+   - The PyInstaller build excludes Java JDK `bin` folders from dependency resolution so unrelated Windows API-set DLL shims are not bundled.
 2. Optionally signs the executable (see [Code Signing](#code-signing-optional)).
 3. Packages it into a single-file wizard installer `TimeTracker_Setup.exe`.
 4. Writes `dist\version.json` (version + SHA-256) for the local update share.
@@ -204,7 +205,7 @@ build_installer.bat
 2. Copy both files into a shared folder or UNC path, e.g. `\\fileserver\apps\TimeTracker`.
 3. Set that path in Settings -> *Update source folder* (config key `update_source_path`). Empty disables updates.
 
-The app checks at startup and once a day. If `version.json` advertises a newer version, the tray notifies the user; on confirmation the installer's SHA-256 is verified again and the setup runs silently. The database and settings are preserved. Nothing is downloaded from the internet.
+The app checks at startup and once a day. If `version.json` advertises a newer version, the tray notifies the user; on confirmation the installer's SHA-256 is verified again and the setup runs silently. Silent updates leave the app closed; reopen it from the Start menu or tray shortcut after setup finishes. The database and settings are preserved. Nothing is downloaded from the internet.
 
 ---
 
