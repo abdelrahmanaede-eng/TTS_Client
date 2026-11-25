@@ -95,6 +95,15 @@ if not exist "assets\setup_icon.ico" (
     python -c "from PIL import Image; img = Image.open('assets/icon_active.png').convert('RGBA'); img.save('assets/setup_icon.ico', format='ICO', sizes=[(16,16),(32,32),(48,48)], bitmap_format='bmp')"
 )
 
+echo [2/4] Closing any running TimeTracker instance (if any)...
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\close_running_instance.ps1"
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Aborting build: dist\TimeTracker.exe could not be unlocked.
+    pause
+    exit /b 1
+)
+
 echo [2/4] Building TimeTracker.exe with PyInstaller...
 python -m PyInstaller --clean --noconfirm TimeTracker.spec
 if errorlevel 1 (
