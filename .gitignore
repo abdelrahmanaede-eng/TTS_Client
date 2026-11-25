@@ -1,0 +1,27 @@
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Local data / logs / secrets
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.env
+*.pem
+*.pfx
+*.p12
+github_token.bin
+
+# OS files
+Thumbs.db
+.DS_Store

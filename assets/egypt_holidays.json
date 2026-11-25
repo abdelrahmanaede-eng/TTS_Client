@@ -1,0 +1,51 @@
+{
+  "_comment": "Bundled Egyptian official holidays. Purely local data file: no network access. 'fixed' entries recur every year on MM-DD; 'years' entries are per-year movable holidays (Islamic lunar holidays, Coptic Easter, Sham El-Nessim). The Islamic dates below are the officially announced dates for the years listed; add a new year block to support later years.",
+  "version": 1,
+  "fixed": [
+    {"month_day": "01-07", "en": "Coptic Christmas", "ar": "عيد الميلاد المجيد"},
+    {"month_day": "01-25", "en": "January 25 Revolution / Police Day", "ar": "ثورة 25 يناير / عيد الشرطة"},
+    {"month_day": "04-25", "en": "Sinai Liberation Day", "ar": "عيد تحرير سيناء"},
+    {"month_day": "05-01", "en": "Labour Day", "ar": "عيد العمال"},
+    {"month_day": "06-30", "en": "June 30 Revolution", "ar": "ثورة 30 يونيو"},
+    {"month_day": "07-23", "en": "July 23 Revolution Day", "ar": "عيد ثورة 23 يوليو"},
+    {"month_day": "10-06", "en": "Armed Forces Day", "ar": "عيد القوات المسلحة"}
+  ],
+  "years": {
+    "2025": [
+      {"date": "2025-03-30", "en": "Eid al-Fitr", "ar": "عيد الفطر"},
+      {"date": "2025-03-31", "en": "Eid al-Fitr (2nd day)", "ar": "عيد الفطر (اليوم الثاني)"},
+      {"date": "2025-04-01", "en": "Eid al-Fitr (3rd day)", "ar": "عيد الفطر (اليوم الثالث)"},
+      {"date": "2025-04-20", "en": "Coptic Easter", "ar": "عيد القيامة المجيد"},
+      {"date": "2025-04-21", "en": "Sham El-Nessim", "ar": "شم النسيم"},
+      {"date": "2025-06-05", "en": "Arafat Day", "ar": "يوم عرفة"},
+      {"date": "2025-06-06", "en": "Eid al-Adha", "ar": "عيد الأضحى"},
+      {"date": "2025-06-07", "en": "Eid al-Adha (2nd day)", "ar": "عيد الأضحى (اليوم الثاني)"},
+      {"date": "2025-06-26", "en": "Islamic New Year", "ar": "رأس السنة الهجرية"},
+      {"date": "2025-09-04", "en": "Prophet's Birthday", "ar": "المولد النبوي الشريف"}
+    ],
+    "2026": [
+      {"date": "2026-03-20", "en": "Eid al-Fitr", "ar": "عيد الفطر"},
+      {"date": "2026-03-21", "en": "Eid al-Fitr (2nd day)", "ar": "عيد الفطر (اليوم الثاني)"},
+      {"date": "2026-03-22", "en": "Eid al-Fitr (3rd day)", "ar": "عيد الفطر (اليوم الثالث)"},
+      {"date": "2026-04-12", "en": "Coptic Easter", "ar": "عيد القيامة المجيد"},
+      {"date": "2026-04-13", "en": "Sham El-Nessim", "ar": "شم النسيم"},
+      {"date": "2026-05-26", "en": "Arafat Day", "ar": "يوم عرفة"},
+      {"date": "2026-05-27", "en": "Eid al-Adha", "ar": "عيد الأضحى"},
+      {"date": "2026-05-28", "en": "Eid al-Adha (2nd day)", "ar": "عيد الأضحى (اليوم الثاني)"},
+      {"date": "2026-06-16", "en": "Islamic New Year", "ar": "رأس السنة الهجرية"},
+      {"date": "2026-08-25", "en": "Prophet's Birthday", "ar": "المولد النبوي الشريف"}
+    ],
+    "2027": [
+      {"date": "2027-03-09", "en": "Eid al-Fitr", "ar": "عيد الفطر"},
+      {"date": "2027-03-10", "en": "Eid al-Fitr (2nd day)", "ar": "عيد الفطر (اليوم الثاني)"},
+      {"date": "2027-03-11", "en": "Eid al-Fitr (3rd day)", "ar": "عيد الفطر (اليوم الثالث)"},
+      {"date": "2027-05-02", "en": "Coptic Easter", "ar": "عيد القيامة المجيد"},
+      {"date": "2027-05-03", "en": "Sham El-Nessim", "ar": "شم النسيم"},
+      {"date": "2027-05-16", "en": "Arafat Day", "ar": "يوم عرفة"},
+      {"date": "2027-05-17", "en": "Eid al-Adha", "ar": "عيد الأضحى"},
+      {"date": "2027-05-18", "en": "Eid al-Adha (2nd day)", "ar": "عيد الأضحى (اليوم الثاني)"},
+      {"date": "2027-06-06", "en": "Islamic New Year", "ar": "رأس السنة الهجرية"},
+      {"date": "2027-08-14", "en": "Prophet's Birthday", "ar": "المولد النبوي الشريف"}
+    ]
+  }
+}
