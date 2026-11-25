@@ -689,6 +689,8 @@ class TrayApp:
                 installer_path,
                 info.sha256,
                 required_publisher=getattr(self.config, "required_update_publisher", ""),
+                prompt_after_install=True,
+                language=lang,
             ):
                 if self._icon:
                     self._icon.notify(t("update_launch_fail", lang), "BUSSMA_TTS")

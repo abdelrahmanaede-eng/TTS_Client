@@ -205,7 +205,7 @@ build_installer.bat
 2. Copy both files into a shared folder or UNC path, e.g. `\\fileserver\apps\TimeTracker`.
 3. Set that path in Settings -> *Update source folder* (config key `update_source_path`). Empty disables updates.
 
-The app checks at startup and once a day. If `version.json` advertises a newer version, the tray notifies the user; on confirmation the installer's SHA-256 is verified again and the setup runs silently. Silent updates leave the app closed; reopen it from the Start menu or tray shortcut after setup finishes. The database and settings are preserved. Nothing is downloaded from the internet.
+The app checks at startup and once a day. If `version.json` advertises a newer version, the tray notifies the user; on confirmation the installer's SHA-256 is verified again and the setup runs silently. After setup exits, a prompt offers **Open now** or **Later**, so the app is never launched while the installer is still running. The database and settings are preserved. Nothing is downloaded from the internet.
 
 ---
 

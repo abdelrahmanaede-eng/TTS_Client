@@ -103,6 +103,17 @@ class TestLocalUpdateSource(unittest.TestCase):
         self.assertIn("/VERYSILENT", args)
         self.assertIn("/SUPPRESSMSGBOXES", args)
 
+    def test_launch_installer_starts_manual_open_prompt(self) -> None:
+        info = check_for_update(self.share, "1.0.0")
+        assert info is not None
+        installer_process = mock.Mock(pid=1234)
+        with (
+            mock.patch.object(updater.subprocess, "Popen", return_value=installer_process),
+            mock.patch.object(updater, "_launch_post_update_prompt", return_value=True) as prompt,
+        ):
+            self.assertTrue(launch_installer(info, prompt_after_install=True, language="ar"))
+        prompt.assert_called_once_with(1234, Path(updater.sys.executable).resolve(), "ar")
+
     def test_launch_refuses_tampered_installer(self) -> None:
         info = check_for_update(self.share, "1.0.0")
         assert info is not None

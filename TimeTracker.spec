@@ -15,7 +15,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets')],
+    datas=[('assets', 'assets'), ('scripts/post_update_prompt.ps1', 'scripts')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

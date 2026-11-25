@@ -101,7 +101,7 @@ upload_installer.bat
 
 **ترتيب البناء:** `set_version.py` بيقرأ/يضبط الإصدار من `config.py` ← PyInstaller بيعمل `TimeTracker.exe` من `TimeTracker.spec` (مع استبعاد مجلدات Java JDK من مسارات البحث لتجنب ضم DLLs غير لازمة) ← توقيع اختياري (يفضّل `SIGN_CERT_THUMBPRINT`) ← Inno Setup بيعمل `TimeTracker_Setup.exe` من `installer.iss` ← يتكتب `dist/version.json` بالـ SHA-256.
 
-**للنشر للموظفين:** ابعت `dist/TimeTracker_Setup.exe` (مع `version.json` لو هتستخدم التحديث التلقائي) وخلي `update_source_path` يشاور على المجلد/UNC المشترك. المُثبّت بيتثبّت في مساحة المستخدم من غير Admin، وبيسجّل نفسه في Startup، وبيحفظ قاعدة البيانات والإعدادات وقت التحديث. التحديث الصامت ما بيشغّلش التطبيق تلقائيًا؛ افتحه من Start بعد ما التثبيت يخلص.
+**للنشر للموظفين:** ابعت `dist/TimeTracker_Setup.exe` (مع `version.json` لو هتستخدم التحديث التلقائي) وخلي `update_source_path` يشاور على المجلد/UNC المشترك. المُثبّت بيتثبّت في مساحة المستخدم من غير Admin، وبيسجّل نفسه في Startup، وبيحفظ قاعدة البيانات والإعدادات وقت التحديث. بعد انتهاء التثبيت الصامت تظهر نافذة فيها «افتح البرنامج» أو «لاحقًا»؛ التطبيق لا يبدأ تلقائيًا أثناء التثبيت.
 
 **أدوات إضافية في `scripts/`:** `smoke_test.py` (محاكاة أسبوع عمل كامل)، `benchmark.py` (قياسات الأداء)، `seed_fake_data.py` (بيانات تجريبية)، `set_version.py`، `token_store.py`، `upload_release.py`.
 

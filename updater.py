@@ -138,6 +138,50 @@ def verify_authenticode(path: Path, expected_publisher: str = "") -> bool:
         return False
 
 
+def _launch_post_update_prompt(installer_pid: int, application_path: Path, language: str) -> bool:
+    """Show an out-of-process prompt after the silent installer exits."""
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    prompt_source = bundle_root / "scripts" / "post_update_prompt.ps1"
+    if not prompt_source.is_file():
+        logger.error("Post-update prompt script not found: %s", prompt_source)
+        return False
+
+    prompt_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".ps1", delete=False) as prompt_file:
+            prompt_file.write(b"\xef\xbb\xbf" + prompt_source.read_bytes())
+            prompt_path = Path(prompt_file.name)
+
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-STA",
+                "-WindowStyle",
+                "Hidden",
+                "-ExecutionPolicy",
+                "RemoteSigned",
+                "-File",
+                str(prompt_path),
+                "-InstallerProcessId",
+                str(installer_pid),
+                "-ApplicationPath",
+                str(application_path),
+                "-Language",
+                language if language in ("en", "ar") else "en",
+            ],
+            close_fds=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        logger.info("Started post-update prompt for installer process %s", installer_pid)
+        return True
+    except OSError as exc:
+        logger.error("Could not start post-update prompt: %s", exc)
+        if prompt_path is not None:
+            prompt_path.unlink(missing_ok=True)
+        return False
+
+
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     """Compute hex SHA-256 digest of a file."""
     digest = hashlib.sha256()
@@ -515,6 +559,8 @@ def launch_installer(
     target: UpdateInfo | Path | str,
     sha256: str = "",
     required_publisher: str = "",
+    prompt_after_install: bool = False,
+    language: str = "en",
 ) -> bool:
     """Re-verify checksum (and optionally Authenticode) then launch silently."""
     if isinstance(target, UpdateInfo):
@@ -538,8 +584,17 @@ def launch_installer(
         return False
 
     try:
-        subprocess.Popen([str(installer_path), *SILENT_INSTALL_ARGS], close_fds=True)
+        installer_process = subprocess.Popen(
+            [str(installer_path), *SILENT_INSTALL_ARGS],
+            close_fds=True,
+        )
         logger.info("Launched silent installer: %s", installer_path)
+        if prompt_after_install:
+            _launch_post_update_prompt(
+                installer_process.pid,
+                Path(sys.executable).resolve(),
+                language,
+            )
         return True
     except Exception as exc:
         logger.error("Could not launch installer %s: %s", installer_path, exc)
