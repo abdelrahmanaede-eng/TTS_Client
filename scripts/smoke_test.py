@@ -28,19 +28,19 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import database as database_module  # noqa: E402
-from calculator import get_day_boundaries  # noqa: E402
-from config import Config  # noqa: E402
-from database import SCHEMA_VERSION, Database  # noqa: E402
+import time_tracker.core.database as database_module  # noqa: E402
+from time_tracker.core.calculator import get_day_boundaries  # noqa: E402
+from time_tracker.core.config import Config  # noqa: E402
+from time_tracker.core.database import SCHEMA_VERSION, Database  # noqa: E402
 from openpyxl import load_workbook  # noqa: E402
-from reporter import export_csv_bundle, export_report  # noqa: E402
-from retention import (  # noqa: E402
+from time_tracker.reporting.reporter import export_csv_bundle, export_report  # noqa: E402
+from time_tracker.core.retention import (  # noqa: E402
     aggregate_missing_days,
     get_day_metrics,
     purge_old_data,
 )
-from tracker import ActivityTracker  # noqa: E402
-from visualizer import build_dashboard_data  # noqa: E402
+from time_tracker.core.tracker import ActivityTracker  # noqa: E402
+from time_tracker.reporting.visualizer import build_dashboard_data  # noqa: E402
 
 MONDAY = date(2026, 11, 2)
 SATURDAY = date(2026, 11, 7)
@@ -198,8 +198,8 @@ def step_week(tmp: Path) -> tuple[Database, Config, dict[str, Any]]:
         accepted.append(True)
         on_response(True, "Project Work")  # accept immediately
 
-    with mock.patch("tracker.show_overtime_prompt_async", side_effect=fake_prompt), \
-         mock.patch("tracker.show_meeting_end_note_dialog_async", lambda *a, **k: None):
+    with mock.patch("time_tracker.core.tracker.show_overtime_prompt_async", side_effect=fake_prompt), \
+         mock.patch("time_tracker.core.tracker.show_meeting_end_note_dialog_async", lambda *a, **k: None):
         simulate_week(db, config, [])
 
     # Saturday meeting, accepted, then a second one declined.
@@ -210,8 +210,8 @@ def step_week(tmp: Path) -> tuple[Database, Config, dict[str, Any]]:
     def sat_prompt(message, on_response, lang="en", timeout_seconds=None):
         on_response(answers.pop(0), "Project Work" if answers else "")
 
-    with mock.patch("tracker.show_overtime_prompt_async", side_effect=sat_prompt), \
-         mock.patch("tracker.show_meeting_end_note_dialog_async", lambda *a, **k: None):
+    with mock.patch("time_tracker.core.tracker.show_overtime_prompt_async", side_effect=sat_prompt), \
+         mock.patch("time_tracker.core.tracker.show_meeting_end_note_dialog_async", lambda *a, **k: None):
         with mock.patch.object(time_module, "time", lambda: clock.wall_time):
             tracker.toggle_meeting()          # Saturday 09:30, accepted
         clock.dt = _at(SATURDAY, 13, 0)

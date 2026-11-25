@@ -8,10 +8,10 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from command_bus import CommandBus
-from config import Config
-from database import Database
-from tracker import ActivityTracker
+from time_tracker.core.command_bus import CommandBus
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.core.tracker import ActivityTracker
 
 
 class TestCommandBusCore(unittest.TestCase):

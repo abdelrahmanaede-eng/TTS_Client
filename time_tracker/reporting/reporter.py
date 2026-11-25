@@ -27,21 +27,22 @@ from openpyxl.chart.series import SeriesLabel
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from calculator import (
+from time_tracker.core.calculator import (
     DayMetrics,
     calculate_app_usage,
     calculate_day_metrics,
     format_duration_hm,
     get_day_boundaries,
 )
-from config import Config, get_app_dir, resolve_writable_dir
-from database import Database
-from retention import (
+from time_tracker.core.config import Config, get_app_dir, resolve_writable_dir
+from time_tracker.core.database import Database
+from time_tracker.core.retention import (
     aggregate_missing_days,
     get_day_app_usage,
     get_day_metrics,
     project_breakdown,
 )
+from time_tracker.paths import get_app_root
 
 logger = logging.getLogger(__name__)
 
@@ -558,7 +559,7 @@ def export_report(
         events = [ea[0] for ea in events_with_apps]
 
         if events or sessions:
-            from visualizer import build_activity_and_sessions_log
+            from time_tracker.reporting.visualizer import build_activity_and_sessions_log
             log_items = build_activity_and_sessions_log(cur_date, events, sessions, events_with_apps, config)
             for it in log_items:
                 dur_m = it["duration_min"]
@@ -1438,7 +1439,7 @@ def export_pdf_report(
     temp_pdf = reports_dir / f".tt_pdf_{uuid.uuid4().hex[:8]}.pdf"
 
     logo_base64 = ""
-    app_root = Path(__file__).resolve().parent
+    app_root = get_app_root()
     logo_path = app_root / "assets" / "official_logo.png"
     if logo_path.exists():
         try:

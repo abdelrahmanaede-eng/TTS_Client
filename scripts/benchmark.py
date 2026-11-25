@@ -24,10 +24,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import Config  # noqa: E402
-from database import Database  # noqa: E402
-from retention import get_day_metrics  # noqa: E402
-from visualizer import build_dashboard_data, generate_dashboard_html  # noqa: E402
+from time_tracker.core.config import Config  # noqa: E402
+from time_tracker.core.database import Database  # noqa: E402
+from time_tracker.core.retention import get_day_metrics  # noqa: E402
+from time_tracker.reporting.visualizer import build_dashboard_data, generate_dashboard_html  # noqa: E402
 
 PROCESS_START = time.perf_counter()
 TOTAL_EVENTS = 60_000
@@ -104,7 +104,7 @@ def bench_startup(tmp: Path) -> float:
     path = tmp / "startup.db"
     started = time.perf_counter()
     db = Database(path)
-    from tracker import ActivityTracker
+    from time_tracker.core.tracker import ActivityTracker
 
     clock = Clock(datetime.now())
     tracker = ActivityTracker(
@@ -129,7 +129,7 @@ def bench_ram(db: Database, config: Config, day: date) -> str:
     except Exception:
         return "not measured (psutil not installed)"
     process = psutil.Process(os.getpid())
-    from tracker import ActivityTracker
+    from time_tracker.core.tracker import ActivityTracker
 
     clock = Clock(datetime.now())
     tracker = ActivityTracker(

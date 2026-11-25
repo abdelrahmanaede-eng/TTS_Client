@@ -18,11 +18,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
-import dialogs
-from config import Config
-from database import Database
-from reporter import _build_official_pdf_html, export_pdf_report, find_headless_browser
-from tracker import (
+import time_tracker.ui.dialogs as dialogs
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import _build_official_pdf_html, export_pdf_report, find_headless_browser
+from time_tracker.core.tracker import (
     BROWSER_PROCESSES,
     MEETING_APP_PROCESSES,
     MEETING_TITLE_KEYWORDS,
@@ -30,7 +30,7 @@ from tracker import (
     get_active_application_name,
     reset_active_app_cache,
 )
-from visualizer import (
+from time_tracker.reporting.visualizer import (
     DashboardServer,
     build_dashboard_data,
     generate_dashboard_html,
@@ -332,7 +332,9 @@ class TestProposal5TkinterFallbacksAndLogging(unittest.TestCase):
     def test_show_overtime_prompt_fallback_when_tk_unavailable(self) -> None:
         """When _tk_available is False, show_overtime_prompt_async invokes Win32 fallback."""
         with mock.patch.object(dialogs, "_tk_available", False):
-            with mock.patch("dialogs.win32_message_box", return_value=dialogs.IDYES) as win_box:
+            with mock.patch(
+                "time_tracker.ui.dialogs.win32_message_box", return_value=dialogs.IDYES
+            ) as win_box:
                 response_received: list[tuple[bool, str]] = []
 
                 def callback(accepted: bool, reason: str) -> None:

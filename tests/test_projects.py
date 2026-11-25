@@ -9,12 +9,12 @@ from pathlib import Path
 
 import openpyxl
 
-from calculator import calculate_project_usage
-from config import Config
-from database import Database
-from reporter import export_report, export_csv_bundle
-from retention import project_breakdown
-from tracker import ActivityTracker
+from time_tracker.core.calculator import calculate_project_usage
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import export_report, export_csv_bundle
+from time_tracker.core.retention import project_breakdown
+from time_tracker.core.tracker import ActivityTracker
 
 
 def _ts(d: date, hour: int, minute: int = 0) -> int:
@@ -104,7 +104,7 @@ class TestProjectAttribution(unittest.TestCase):
         names = {row["name"]: row for row in rows}
         self.assertIn("Alpha", names)
         self.assertIn("Beta", names)
-        from retention import get_day_metrics
+        from time_tracker.core.retention import get_day_metrics
 
         worked = get_day_metrics(self.db, self.config, self.day).worked_seconds
         attributed = sum(int(row["worked_sec"]) for row in rows)
@@ -184,7 +184,7 @@ class TestTrackerCurrentProject(unittest.TestCase):
         self.tracker.toggle_meeting()
 
     def test_tray_menu_builds_with_projects(self) -> None:
-        from tray import TrayApp
+        from time_tracker.ui.tray import TrayApp
         app = TrayApp(self.db, self.config, self.tracker)
         menu = app._build_menu()
         self.assertIsNotNone(menu)

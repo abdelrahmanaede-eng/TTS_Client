@@ -3,7 +3,7 @@
 TimeTracker is a lightweight, local-only Windows system tray application designed to answer one question at the end of the day:
 **"How many of my working hours did I work today?"**
 
-The daily target and the working window are defaults, not constants: both are configurable in Settings (a default 8 h day, 09:30-17:30). Current version: **1.3.8** (source of truth: `config.py` → `APP_VERSION`; the artifacts in `dist/` match it).
+The daily target and the working window are defaults, not constants: both are configurable in Settings (a default 8 h day, 09:30-17:30). Current version: **1.4.4** (source of truth: `time_tracker/core/config.py` → `APP_VERSION`).
 
 ---
 
@@ -14,19 +14,22 @@ This is a Windows desktop project. Everything needed to understand, run, test an
 ```
 Bussma_EA/                      <- workspace root
 ├── README.md                  <- workspace overview (Arabic + English quick reference)
-├── docs/
-│   └── REMAINING_WORK.md      <- single source of truth for open work
 ├── scripts/
 │   ├── build_installer.bat    <- wrapper: cd ..\timetracker then build
 │   └── upload_installer.bat   <- wrapper: cd ..\timetracker then upload
 └── timetracker/               <- the actual application (this folder)
     ├── README.md              <- this file: complete technical reference
-    ├── main.py ... *.py       <- source modules (must stay at this level, see note)
+    ├── main.py                <- thin entry point for PyInstaller and development
+    ├── time_tracker/          <- application package, grouped by responsibility
+    │   ├── core/              <- tracking, calculations, configuration, database
+    │   ├── ui/                <- tray interface and Tkinter dialogs
+    │   ├── reporting/         <- Excel/CSV/PDF reports and dashboard
+    │   ├── system/            <- autostart, logging, and updater
+    │   └── localization/      <- translations and Egyptian holidays
     ├── assets/                <- icons, official logo, egypt_holidays.json
     ├── docs/                  <- DECISIONS.md, USER_GUIDE.md, test_checklist.md
-    ├── scripts/               <- set_version.py, smoke_test.py, benchmark.py,
-    │                             seed_fake_data.py, token_store.py, upload_release.py
-    ├── tests/                 <- 27 test files / 332 tests (pytest, fully offline)
+    ├── scripts/               <- aggregate_reports.py and development/release tools
+    ├── tests/                 <- 28 test files / 335 tests (pytest, fully offline)
     ├── dist/                  <- built artifacts: TimeTracker.exe,
     │                             TimeTracker_Setup.exe, version.json
     ├── build_installer.bat    <- real build script (PyInstaller + Inno Setup 6)
@@ -37,41 +40,40 @@ Bussma_EA/                      <- workspace root
     └── requirements.txt       <- pystray, Pillow, openpyxl, pyinstaller (pinned)
 ```
 
-**Why the loose files stay at this level — do not "tidy" them into a subfolder:**
-`TimeTracker.spec` names `main.py`, `assets/` and `assets/app.ico` relative to this folder; `installer.iss` resolves `dist\` and `assets\` relative to itself; `tray.py`/`egypt_holidays.py` resolve assets via `Path(__file__).parent / "assets"`; `autostart.py` resolves `main.py` via `Path(__file__).parent`; `reporter.py` resolves the logo from `Path(__file__).resolve().parent`; `scripts/*.py` set `ROOT = Path(__file__).resolve().parent.parent`; and pytest imports modules by bare name from this folder. Moving them silently breaks the build or the tests. Generated caches (`__pycache__`, `.pytest_cache`, `build/`) are intentionally absent — they are regenerated automatically.
+The source modules live under `time_tracker/` in focused packages. The root `main.py` remains a small bootstrap because PyInstaller and the Windows autostart entry use that stable path. `time_tracker/paths.py` resolves bundled assets and scripts from the application root.
 
 ### What each source module does
 | File | Responsibility |
 |---|---|
-| `main.py` | Entry point: tray loop + CLI flags (`--dashboard`/`-d`, `--verbose`, `--diagnostics`) |
-| `config.py` | `APP_VERSION`, settings persistence in `%LOCALAPPDATA%\TimeTracker\config.json` |
-| `database.py` | SQLite `data.db`, schema version 6, migrations, atomic backups |
-| `calculator.py` | Pure work-time math: trailing grace period, worked/overtime/break classification |
-| `command_bus.py` | Single-writer command bus for mutable tracker state |
-| `tracker.py` | Core monitoring engine: input events, sessions, heartbeats, idle/presence |
-| `dialogs.py` | Tkinter dialogs (Settings, Pause, Overtime, Meeting, Consent, About...) |
-| `tray.py` | `pystray` icon, tray menus, icons loaded from `assets/` |
-| `reporter.py` | Excel/CSV/PDF reports (Daily Summary, App Usage, Sessions, Timeline, Projects) |
-| `visualizer.py` | HTML dashboard + optional loopback-only HTTP server |
-| `retention.py` | Aggregation into `daily_summary`, retention purge, day analytics |
-| `egypt_holidays.py` | Offline loader for `assets/egypt_holidays.json` |
-| `i18n.py` | English/Arabic strings, RTL and bidi text helpers |
-| `logging_setup.py` | Rotating logs, crash capture (`faulthandler`), diagnostics bundle |
-| `updater.py` | Offline/HTTPS auto-update, SHA-256 verification, silent install |
-| `autostart.py` | Windows Startup registration |
-| `aggregate_reports.py` | Manager tool: combines employee Excel reports |
+| `time_tracker/main.py` | Application loop and CLI flags |
+| `time_tracker/core/config.py` | `APP_VERSION` and settings persistence |
+| `time_tracker/core/database.py` | SQLite database, migrations, atomic backups |
+| `time_tracker/core/calculator.py` | Work-time calculations and classification |
+| `time_tracker/core/command_bus.py` | Single-writer command bus |
+| `time_tracker/core/tracker.py` | Monitoring engine and sessions |
+| `time_tracker/ui/dialogs.py` | Tkinter dialogs |
+| `time_tracker/ui/tray.py` | Tray icon and menus |
+| `time_tracker/reporting/reporter.py` | Excel/CSV/PDF reports |
+| `time_tracker/reporting/visualizer.py` | Dashboard and loopback HTTP server |
+| `time_tracker/core/retention.py` | Daily aggregation and retention |
+| `time_tracker/localization/egypt_holidays.py` | Offline Egyptian holiday loader |
+| `time_tracker/localization/i18n.py` | Translations and RTL helpers |
+| `time_tracker/system/logging_setup.py` | Logging and diagnostics |
+| `time_tracker/system/updater.py` | Local/HTTPS updates |
+| `time_tracker/system/autostart.py` | Windows Startup registration |
+| `scripts/aggregate_reports.py` | Manager report aggregation utility |
 
 ### Documentation map
 - **This README** — complete product/feature/architecture/build/test reference. Start here.
-- `../docs/REMAINING_WORK.md` — authoritative list of open code work and the external GitHub-token revocation.
+- `docs/REMAINING_WORK.md` — authoritative list of open code work and the external GitHub-token revocation.
 - `docs/DECISIONS.md` — chronological decisions log (§9.2.1 lists every persisted config key; §30 logging; §31–33 security/performance review; §34 dashboard timeline).
 - `docs/USER_GUIDE.md` — Arabic end-user guide (installation, tray menu, settings, reports).
 - `docs/test_checklist.md` — manual/benchmark checklist and historical measurements.
 
-### Current status (verified 2026-11-18)
-- Version **1.3.8**; full suite **332 passed** (`python -m pytest tests -q`, Python 3.11 / Windows).
+### Current status (verified 2026-11-25)
+- Version **1.4.4**; full suite **335 passed** (`python -m pytest tests -q`, Python 3.11 / Windows).
 - `dist/TimeTracker_Setup.exe` (~27 MB) + `dist/TimeTracker.exe` (~25 MB) + `dist/version.json` are present and kept.
-- Open items: PERF-02, QUAL-01, QUAL-02, QUAL-03 (see `../docs/REMAINING_WORK.md`) and SEC-01 (revoke the old GitHub token — outside the code).
+- Open items: PERF-02, QUAL-01, QUAL-02, QUAL-03 (see `docs/REMAINING_WORK.md`) and SEC-01 (revoke the old GitHub token — outside the code).
 - `MANUAL_QA.md` is referenced by older release notes but is no longer present; GUI acceptance checks are not currently documented.
 
 ---
@@ -125,7 +127,7 @@ Bussma_EA/                      <- workspace root
   - Access "Settings" from the tray menu to configure work hours, target hours, work days, official holidays (including the Egyptian import), the Projects tab, retention (`retention_days`), the local update source (`update_source_path`), CSV export, app tracking (`enable_app_tracking`), the active presence check (`active_check_enabled`, `active_check_interval_min`), and any reminders. Live updates apply immediately without restarting.
   - Every persisted key is documented in [`DECISIONS.md`](docs/DECISIONS.md) section 9.2.1.
 - **Manager Multi-Employee Aggregator:**
-  - Standalone script `aggregate_reports.py` combines employee Excel reports into a unified manager dashboard.
+  - Standalone script `scripts/aggregate_reports.py` combines employee Excel reports into a unified manager dashboard.
 - **Pause & Half-Day Modes:**
   - **Pause Tracking:** Temporarily suspend tracking for personal device use (15m, 30m, 1h, or until resumed).
   - **Half-Day Mode:** Sets today's target to half of the configured daily target (e.g. 3 h for a 6 h day) with one click; the tray label and toast show the real number.
@@ -260,7 +262,7 @@ a report.
 python -m pytest tests -q
 ```
 
-The suite has **332 tests** and is fully offline: grace model, interval algebra, presence-credit cap, overtime state machine, meeting/break accounting (D1/D2), non-work-day overtime (D3), migrations (including a simulated crash), retention aggregation, holiday import, CSV encoding, projects, updater path safety, pause sessions, i18n key coverage, logging/rotation/crash capture/diagnostics bundles and the dashboard (including `</script>` escaping).
+The suite has **335 tests** and is fully offline: grace model, interval algebra, presence-credit cap, overtime state machine, meeting/break accounting (D1/D2), non-work-day overtime (D3), migrations (including a simulated crash), retention aggregation, holiday import, CSV encoding, projects, updater path safety, pause sessions, i18n key coverage, logging/rotation/crash capture/diagnostics bundles and the dashboard (including `</script>` escaping).
 
 A single instance per Windows session is enforced with the `Local\TimeTrackerSingleton` mutex, so a second Windows user (RDP / fast user switching) gets their own instance.
 
@@ -270,7 +272,7 @@ A single instance per Windows session is enforced with the `Local\TimeTrackerSin
 
 Run the aggregator tool:
 ```cmd
-python aggregate_reports.py
+python scripts/aggregate_reports.py
 ```
 Presents a folder picker to select the directory containing employee `TimeReport_*.xlsx` files, then generates `Team_Consolidated_Report_<date>.xlsx` with team totals, daily breakdowns, and top applications across all team members.
 

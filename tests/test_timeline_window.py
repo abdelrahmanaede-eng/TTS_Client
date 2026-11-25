@@ -9,9 +9,9 @@ import urllib.request
 from datetime import date, datetime, time
 from pathlib import Path
 
-from config import Config
-from database import Database
-from visualizer import (
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.visualizer import (
     DashboardServer,
     _get_app_timeline_blocks,
     _get_status_timeline_blocks,
@@ -51,7 +51,7 @@ class TestTimelineWindow(unittest.TestCase):
         self.assertTrue(worked)
 
         # Same data on the old fixed 24h ruler, for a direct comparison.
-        from visualizer import get_day_boundaries
+        from time_tracker.reporting.visualizer import get_day_boundaries
 
         day_start, day_end = get_day_boundaries(WORK_DAY)
         old = _get_status_timeline_blocks(WORK_DAY, events, [], cfg, window=(day_start, day_end))

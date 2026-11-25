@@ -8,7 +8,7 @@ from pathlib import Path
 
 import openpyxl
 
-from aggregate_reports import aggregate_employee_reports
+from scripts.aggregate_reports import aggregate_employee_reports
 
 
 HEADER = [

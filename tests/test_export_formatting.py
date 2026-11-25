@@ -9,9 +9,9 @@ from pathlib import Path
 
 import openpyxl
 
-from config import Config
-from database import Database
-from reporter import (
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import (
     _build_official_pdf_html,
     excel_safe_text,
     export_csv_bundle,

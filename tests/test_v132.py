@@ -16,16 +16,16 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-import database as database_module
-from calculator import calculate_day_metrics, get_day_boundaries
-from config import Config
-from database import SCHEMA_VERSION, Database
-from retention import (
+import time_tracker.core.database as database_module
+from time_tracker.core.calculator import calculate_day_metrics, get_day_boundaries
+from time_tracker.core.config import Config
+from time_tracker.core.database import SCHEMA_VERSION, Database
+from time_tracker.core.retention import (
     aggregate_missing_days,
     get_day_metrics,
     purge_old_data,
 )
-from tracker import ActivityTracker
+from time_tracker.core.tracker import ActivityTracker
 
 WORK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu"]
 
@@ -144,7 +144,7 @@ class TestAutomaticAggregation(unittest.TestCase):
         config = Config(retention_days=30, enable_retention_cleanup=True)
         victim = self.days[-1]  # oldest day
         with mock.patch(
-            "retention.aggregate_day", side_effect=RuntimeError("boom")
+            "time_tracker.core.retention.aggregate_day", side_effect=RuntimeError("boom")
         ):
             result = purge_old_data(self.db, config, today=self.today)
 
@@ -154,7 +154,7 @@ class TestAutomaticAggregation(unittest.TestCase):
         self.assertTrue(self.db.get_input_events_between(start, end))
 
     def test_dashboard_days_are_not_empty(self) -> None:
-        from visualizer import build_dashboard_data
+        from time_tracker.reporting.visualizer import build_dashboard_data
 
         aggregate_missing_days(self.db, self.config, today=self.today)
         data = build_dashboard_data(self.db, self.config, self.today - timedelta(days=20))
@@ -186,7 +186,9 @@ class TestMeetingOvertimeFlow(unittest.TestCase):
                 {"message": message, "on_response": on_response, "timeout_seconds": timeout_seconds}
             )
 
-        patcher = mock.patch("tracker.show_overtime_prompt_async", side_effect=fake_prompt)
+        patcher = mock.patch(
+            "time_tracker.core.tracker.show_overtime_prompt_async", side_effect=fake_prompt
+        )
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -338,7 +340,7 @@ class TestMigrationBackup(unittest.TestCase):
 
 class TestLiveComparison(unittest.TestCase):
     def test_current_period_uses_live_values(self) -> None:
-        from retention import build_comparison
+        from time_tracker.core.retention import build_comparison
 
         with tempfile.TemporaryDirectory() as tmp:
             db = Database(Path(tmp) / "live.db")

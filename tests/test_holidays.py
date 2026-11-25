@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from egypt_holidays import (
+from time_tracker.localization.egypt_holidays import (
     count_new_holidays,
     get_egyptian_holidays,
     get_holidays_file,

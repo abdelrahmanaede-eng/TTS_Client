@@ -9,7 +9,7 @@ from __future__ import annotations
 import unittest
 from datetime import date, time
 
-from calculator import (
+from time_tracker.core.calculator import (
     calculate_active_seconds,
     calculate_app_usage,
     calculate_day_metrics,

@@ -22,7 +22,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 try:
-    from config import APP_VERSION
+    from time_tracker.core.config import APP_VERSION
 except ImportError:
     APP_VERSION = "1.0.0"
 

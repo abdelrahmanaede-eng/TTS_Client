@@ -18,7 +18,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-from config import get_app_dir, resolve_writable_dir
+from time_tracker.core.config import get_app_dir, resolve_writable_dir
 
 logger = logging.getLogger(__name__)
 

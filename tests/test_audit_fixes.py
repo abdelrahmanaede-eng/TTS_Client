@@ -27,21 +27,21 @@ from datetime import date, datetime, time as dt_time, timedelta
 from pathlib import Path
 from typing import Any
 
-from calculator import (
+from time_tracker.core.calculator import (
     MAX_CONFIRM_CREDIT_SECONDS,
     calculate_day_metrics,
     get_day_boundaries,
     half_day_target_hours,
     presence_credit_intervals,
 )
-from config import APP_VERSION, DEFAULT_CONFIG, Config, is_valid_config, load_config
-from database import SCHEMA_VERSION, Database
-from i18n import TRANSLATIONS
-from reporter import documents_folder_is_cloud_synced, export_csv_bundle
-from retention import get_day_metrics
-from tracker import ActivityTracker
-from updater import is_plain_filename, resolve_installer_path
-from visualizer import build_dashboard_data, generate_dashboard_html
+from time_tracker.core.config import APP_VERSION, DEFAULT_CONFIG, Config, is_valid_config, load_config
+from time_tracker.core.database import SCHEMA_VERSION, Database
+from time_tracker.localization.i18n import TRANSLATIONS
+from time_tracker.reporting.reporter import documents_folder_is_cloud_synced, export_csv_bundle
+from time_tracker.core.retention import get_day_metrics
+from time_tracker.core.tracker import ActivityTracker
+from time_tracker.system.updater import is_plain_filename, resolve_installer_path
+from time_tracker.reporting.visualizer import build_dashboard_data, generate_dashboard_html
 
 WORK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu"]
 
@@ -300,9 +300,9 @@ class TestI18nCoverage(unittest.TestCase):
     def test_every_literal_key_exists_in_both_languages(self) -> None:
         """No ``t("key")`` call may reference a missing translation."""
         pattern = re.compile(r"\bt\(\s*[\"']([a-zA-Z0-9_]+)[\"']")
-        package_dir = Path(__file__).resolve().parent.parent
+        package_dir = Path(__file__).resolve().parent.parent / "time_tracker"
         used: dict[str, set[str]] = {}
-        for path in sorted(package_dir.glob("*.py")):
+        for path in sorted(package_dir.rglob("*.py")):
             for match in pattern.finditer(path.read_text(encoding="utf-8")):
                 used.setdefault(match.group(1), set()).add(path.name)
 
@@ -321,7 +321,7 @@ class TestI18nCoverage(unittest.TestCase):
 
 class TestDialogFlag(unittest.TestCase):
     def test_dispatch_failure_does_not_leave_the_flag_set(self) -> None:
-        import dialogs
+        import time_tracker.ui.dialogs as dialogs
 
         original_dispatch = dialogs.dispatch_to_ui
 

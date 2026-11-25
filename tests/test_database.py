@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from config import Config, load_config
-from database import Database
+from time_tracker.core.config import Config, load_config
+from time_tracker.core.database import Database
 
 
 class TestConfig(unittest.TestCase):

@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from calculator import (
+from time_tracker.core.calculator import (
     AppUsageItem,
     DayMetrics,
     calculate_day_metrics,
@@ -26,18 +26,18 @@ from calculator import (
     half_day_target_hours,
     presence_credit_intervals,
 )
-from command_bus import CommandBus
-from config import APP_VERSION, Config
-from database import Database
-from dialogs import (
+from time_tracker.core.command_bus import CommandBus
+from time_tracker.core.config import APP_VERSION, Config
+from time_tracker.core.database import Database
+from time_tracker.ui.dialogs import (
     is_dialog_showing,
     show_active_check_dialog_async,
     show_meeting_end_note_dialog_async,
     show_overtime_prompt_async,
     show_smart_meeting_prompt_async,
 )
-from i18n import t
-from retention import (
+from time_tracker.localization.i18n import t
+from time_tracker.core.retention import (
     active_check_interval_seconds,
     bucket_records_by_day,
     get_day_app_usage,
@@ -45,7 +45,7 @@ from retention import (
     metrics_from_summary,
     purge_old_data,
 )
-from updater import UpdateInfo, check_for_update
+from time_tracker.system.updater import UpdateInfo, check_for_update
 
 logger = logging.getLogger(__name__)
 
@@ -964,7 +964,7 @@ class ActivityTracker:
             # dashboard never reads an empty day for a day that had data.
             def _aggregate_after_midnight() -> None:
                 try:
-                    from retention import aggregate_missing_days
+                    from time_tracker.core.retention import aggregate_missing_days
 
                     aggregate_missing_days(self.db, self.config, today=today)
                 except Exception as exc:
@@ -1356,7 +1356,7 @@ class ActivityTracker:
         """Check the configured update source (GitHub or local/network) at most once per day."""
         source = (getattr(self.config, "update_source_path", "") or "").strip()
         if not source:
-            from config import DEFAULT_CONFIG
+            from time_tracker.core.config import DEFAULT_CONFIG
             source = DEFAULT_CONFIG.get("update_source_path", "")
         if not source:
             return
@@ -1430,7 +1430,7 @@ class ActivityTracker:
                 last_exp_key = f"last_export_week_{today.isocalendar().year}_W{today.isocalendar().week:02d}"
                 if not self.db.get_setting(last_exp_key):
                     try:
-                        from reporter import export_report
+                        from time_tracker.reporting.reporter import export_report
                         start_w = today - timedelta(days=6)
                         export_report(self.db, self.config, start_w, today, open_folder=False)
                         self.db.set_setting(last_exp_key, today.isoformat())

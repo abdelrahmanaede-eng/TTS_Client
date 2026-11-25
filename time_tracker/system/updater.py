@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from time_tracker.paths import get_app_root
+
 logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = "version.json"
@@ -140,7 +142,7 @@ def verify_authenticode(path: Path, expected_publisher: str = "") -> bool:
 
 def _launch_post_update_prompt(installer_pid: int, application_path: Path, language: str) -> bool:
     """Show an out-of-process prompt after the silent installer exits."""
-    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    bundle_root = get_app_root()
     prompt_source = bundle_root / "scripts" / "post_update_prompt.ps1"
     if not prompt_source.is_file():
         logger.error("Post-update prompt script not found: %s", prompt_source)

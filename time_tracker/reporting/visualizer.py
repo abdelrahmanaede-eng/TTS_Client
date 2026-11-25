@@ -32,7 +32,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-from calculator import (
+from time_tracker.core.calculator import (
     AppUsageItem,
     DayMetrics,
     calculate_app_usage,
@@ -47,9 +47,9 @@ from calculator import (
     subtract_intervals,
     total_duration_seconds,
 )
-from config import Config, get_app_dir, resolve_writable_dir
-from database import Database
-from retention import (
+from time_tracker.core.config import Config, get_app_dir, resolve_writable_dir
+from time_tracker.core.database import Database
+from time_tracker.core.retention import (
     build_comparison,
     get_day_app_usage,
     get_day_metrics,
@@ -548,7 +548,7 @@ def _build_single_day_data(
         summary = db.get_daily_summary(d)
         if summary is None:
             return None
-        from retention import metrics_from_summary
+        from time_tracker.core.retention import metrics_from_summary
 
         events: list[int] = []
         events_with_apps: list[dict[str, Any]] = []
@@ -679,7 +679,7 @@ def build_dashboard_data(
     # Item 1c: older days are read from daily_summary, so make sure their rows
     # exist (and are fresh) before the page is compiled.
     try:
-        from retention import aggregate_missing_days
+        from time_tracker.core.retention import aggregate_missing_days
 
         aggregate_missing_days(db, config)
     except Exception as exc:
@@ -2446,7 +2446,7 @@ def open_dashboard(
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    from config import load_config
+    from time_tracker.core.config import load_config
     cfg = load_config()
     db = Database()
     p = open_dashboard(db, cfg)

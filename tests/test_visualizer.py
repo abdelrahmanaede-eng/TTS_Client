@@ -7,9 +7,9 @@ import unittest
 from datetime import date, datetime, time
 from pathlib import Path
 
-from config import Config
-from database import Database
-from visualizer import build_dashboard_data, generate_dashboard_html, open_dashboard
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.visualizer import build_dashboard_data, generate_dashboard_html, open_dashboard
 
 
 class TestVisualizer(unittest.TestCase):

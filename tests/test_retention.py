@@ -9,10 +9,10 @@ from pathlib import Path
 
 import openpyxl
 
-from config import Config
-from database import Database
-from reporter import export_report
-from retention import (
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import export_report
+from time_tracker.core.retention import (
     get_day_app_usage,
     get_day_metrics,
     period_totals,

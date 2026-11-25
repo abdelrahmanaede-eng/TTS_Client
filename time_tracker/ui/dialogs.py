@@ -31,9 +31,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from config import Config
-from i18n import t
-from updater import safe_version_slug
+from time_tracker.core.config import Config
+from time_tracker.localization.i18n import t
+from time_tracker.system.updater import safe_version_slug
 
 logger = logging.getLogger(__name__)
 
@@ -1908,7 +1908,7 @@ def show_settings_dialog_async(
             tab_holidays, tab_holidays_outer = make_scrollable(notebook)
             notebook.add(tab_holidays_outer, text=t("tab_holidays", lang))
 
-            from egypt_holidays import (
+            from time_tracker.localization.egypt_holidays import (
                 count_new_holidays,
                 get_egyptian_holidays,
                 get_holiday_name,
@@ -2259,7 +2259,7 @@ def show_settings_dialog_async(
                     if start_d is None or end_d is None:
                         return  # Tk-unavailable fallback (BUG-05)
                     try:
-                        from reporter import export_csv_bundle
+                        from time_tracker.reporting.reporter import export_csv_bundle
 
                         files = export_csv_bundle(
                             db, config, start_d, end_d,
@@ -2725,7 +2725,7 @@ def show_download_progress_dialog(
 ) -> None:
     """Display a smooth modal download progress dialog with progress bar."""
     import tempfile
-    from updater import download_installer
+    from time_tracker.system.updater import download_installer
 
     def _show() -> None:
         try:

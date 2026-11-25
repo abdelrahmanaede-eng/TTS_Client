@@ -17,11 +17,11 @@ from unittest import mock
 
 import openpyxl
 
-from calculator import calculate_day_metrics
-from config import Config
-from database import Database
-from reporter import export_csv_bundle, export_report
-from tracker import ActivityTracker
+from time_tracker.core.calculator import calculate_day_metrics
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import export_csv_bundle, export_report
+from time_tracker.core.tracker import ActivityTracker
 
 WORK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu"]
 
@@ -188,7 +188,7 @@ class TestStartupCleanup(unittest.TestCase):
             self.assertIsNotNone(db.get_open_session("meeting"))
 
             tracker = ActivityTracker(db, Config(active_check_enabled=False))
-            with mock.patch("tracker.threading.Thread", _DummyThread):
+            with mock.patch("time_tracker.core.tracker.threading.Thread", _DummyThread):
                 tracker.start()
                 tracker.stop()
 

@@ -707,7 +707,7 @@ three real defects that still broke RTL and heavy layouts:
    non-deterministic, which is why the value is stored by the application instead.
 9. **Still open:** PERF-02 (per-operation DB connections), QUAL-01 (~830-line settings builder),
    QUAL-02 (legacy bare `except: pass`) and the QUAL-03 report-row duplication. They are tracked in
-   `../docs/REMAINING_WORK.md` at the workspace root, together with the external GitHub token revocation.
+   `REMAINING_WORK.md` in this documentation folder, together with the external GitHub token revocation.
 10. **Tests** — `test_security_hardening.py` (11), `test_aggregate_reports.py` (3) and
     `test_perf06_sec07.py` (4). Full suite: **321 passed**.
 

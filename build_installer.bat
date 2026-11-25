@@ -171,7 +171,7 @@ echo [3/4] Code signing skipped: set SIGN_CERT_PATH and SIGN_CERT_PASSWORD to en
 echo.
 echo [4/4] Compiling Setup Installer with Inno Setup...
 set "APP_VER="
-for /f "delims=" %%v in ('python -c "import sys; sys.path.insert(0, '.'); from config import APP_VERSION; print(APP_VERSION)"') do set "APP_VER=%%v"
+for /f "delims=" %%v in ('python -c "import sys; sys.path.insert(0, '.'); from time_tracker.core.config import APP_VERSION; print(APP_VERSION)"') do set "APP_VER=%%v"
 if not defined APP_VER (
     echo [ERROR] Could not read APP_VERSION from config.py!
     pause
@@ -190,7 +190,7 @@ if errorlevel 1 (
 :: source (update_source_path) can detect and verify the new release offline.
 echo.
 echo Generating dist\version.json for the local update source...
-python -c "import hashlib, json, pathlib, sys; sys.path.insert(0, '.'); from config import APP_VERSION; p = pathlib.Path('dist/TimeTracker_Setup.exe'); h = hashlib.sha256(p.read_bytes()).hexdigest(); pathlib.Path('dist/version.json').write_text(json.dumps({'version': APP_VERSION, 'installer': p.name, 'sha256': h, 'notes': ''}, indent=2), encoding='utf-8'); print('version.json ->', APP_VERSION)"
+python -c "import hashlib, json, pathlib, sys; sys.path.insert(0, '.'); from time_tracker.core.config import APP_VERSION; p = pathlib.Path('dist/TimeTracker_Setup.exe'); h = hashlib.sha256(p.read_bytes()).hexdigest(); pathlib.Path('dist/version.json').write_text(json.dumps({'version': APP_VERSION, 'installer': p.name, 'sha256': h, 'notes': ''}, indent=2), encoding='utf-8'); print('version.json ->', APP_VERSION)"
 if errorlevel 1 (
     echo [WARN] Could not generate dist\version.json.
 )

@@ -43,7 +43,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from config import (
+from time_tracker.core.config import (
     APP_VERSION,
     get_app_dir,
     normalize_log_level,

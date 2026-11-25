@@ -9,10 +9,10 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-from calculator import calculate_day_metrics, get_day_boundaries
-from config import Config
-from database import Database
-from tracker import ActivityTracker
+from time_tracker.core.calculator import calculate_day_metrics, get_day_boundaries
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.core.tracker import ActivityTracker
 
 
 class MockClockEnv:
@@ -57,7 +57,7 @@ class TestTrackerActiveCheck(unittest.TestCase):
         # The single-dialog flag lives in the dialogs module, so another test
         # module that exercised the real prompt can leave it set and silently
         # suppress the popup these tests assert on. Start every test clean.
-        import dialogs
+        import time_tracker.ui.dialogs as dialogs
 
         dialogs._is_dialog_active = False
         dialogs._dialog_heartbeat_ts = 0.0

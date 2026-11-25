@@ -8,11 +8,11 @@ from datetime import date, datetime, time
 from pathlib import Path
 from unittest import mock
 
-import updater
-from config import Config
-from database import Database
-from reporter import _build_official_pdf_html
-from visualizer import build_dashboard_data, generate_dashboard_html
+import time_tracker.system.updater as updater
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import _build_official_pdf_html
+from time_tracker.reporting.visualizer import build_dashboard_data, generate_dashboard_html
 
 WORK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
@@ -65,7 +65,9 @@ class TestUpdateSourceHardening(unittest.TestCase):
 
     def test_dest_path_uses_sanitised_version(self) -> None:
         source = Path(updater.__file__).read_text(encoding="utf-8")
-        dialogs_src = Path(__import__("dialogs").__file__).read_text(encoding="utf-8")
+        dialogs_src = Path(
+            __import__("time_tracker.ui.dialogs", fromlist=["dialogs"]).__file__
+        ).read_text(encoding="utf-8")
         self.assertIn("safe_version_slug(info.version)", dialogs_src)
         self.assertNotIn("f\"TimeTracker_Setup_{info.version}.exe\"", dialogs_src)
         self.assertIn("MAX_INSTALLER_BYTES", source)
@@ -74,7 +76,7 @@ class TestUpdateSourceHardening(unittest.TestCase):
 class TestNoHardcodedCredential(unittest.TestCase):
     def test_uploader_has_no_default_token(self) -> None:
         # The script is not a package; resolve it by path.
-        path = Path(updater.__file__).parent / "scripts" / "upload_release.py"
+        path = Path(__file__).resolve().parent.parent / "scripts" / "upload_release.py"
         source = path.read_text(encoding="utf-8")
         self.assertNotIn("ghp_", source)
         self.assertNotIn("DEFAULT_TOKEN", source)
@@ -111,7 +113,9 @@ class TestOutputEscaping(unittest.TestCase):
 
 class TestDashboardServerHeaders(unittest.TestCase):
     def test_no_wildcard_cors_and_no_query_token_for_api(self) -> None:
-        source = Path(__import__("visualizer").__file__).read_text(encoding="utf-8")
+        source = Path(
+            __import__("time_tracker.reporting.visualizer", fromlist=["visualizer"]).__file__
+        ).read_text(encoding="utf-8")
         self.assertNotIn('Access-Control-Allow-Origin", "*"', source)
         self.assertIn('"Authorization"', source)
         self.assertIn("Referrer-Policy", source)

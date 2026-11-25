@@ -13,10 +13,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from time_tracker.paths import get_app_root
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,7 @@ HOLIDAYS_FILENAME = "egypt_holidays.json"
 
 def get_assets_dir() -> Path:
     """Return the assets directory (works both from source and PyInstaller)."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "assets"  # type: ignore[attr-defined]
-    return Path(__file__).parent / "assets"
+    return get_app_root() / "assets"
 
 
 def get_holidays_file() -> Path:

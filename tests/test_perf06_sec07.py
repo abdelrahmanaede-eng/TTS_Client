@@ -9,10 +9,10 @@ from datetime import date, datetime, time
 from pathlib import Path
 from unittest import mock
 
-import database as database_module
-from config import Config
-from database import Database
-from visualizer import build_dashboard_data, generate_dashboard_html
+import time_tracker.core.database as database_module
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.visualizer import build_dashboard_data, generate_dashboard_html
 
 
 def _ts(d: date, hour: int) -> int:
@@ -106,7 +106,9 @@ class TestSec07Residual(unittest.TestCase):
             self.assertIn("token=", html)  # the initial auth token itself
             self.assertNotIn("/api/data?token=", html)  # API uses Authorization now
 
-        source = Path(__import__("visualizer").__file__).read_text(encoding="utf-8")
+        source = Path(
+            __import__("time_tracker.reporting.visualizer", fromlist=["visualizer"]).__file__
+        ).read_text(encoding="utf-8")
         self.assertIn('"token=" in a.lower()', source)
         self.assertNotIn('Access-Control-Allow-Origin", "*"', source)
 

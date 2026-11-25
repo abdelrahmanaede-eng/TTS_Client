@@ -9,8 +9,8 @@ import urllib.error
 from pathlib import Path
 from unittest import mock
 
-import updater
-from updater import (
+import time_tracker.system.updater as updater
+from time_tracker.system.updater import (
     check_for_update,
     is_newer,
     launch_installer,

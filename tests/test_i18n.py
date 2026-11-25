@@ -1,7 +1,7 @@
 """Unit tests for the internationalization (i18n) module."""
 
 import unittest
-from i18n import TRANSLATIONS, t
+from time_tracker.localization.i18n import TRANSLATIONS, t
 
 
 class TestI18n(unittest.TestCase):

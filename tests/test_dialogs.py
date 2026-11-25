@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 import unittest
 
-import dialogs
+import time_tracker.ui.dialogs as dialogs
 
 
 class TestDialogFlagWatchdog(unittest.TestCase):

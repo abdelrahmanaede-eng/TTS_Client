@@ -5,7 +5,7 @@ import re
 import sys
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.py"
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "time_tracker" / "core" / "config.py"
 
 
 def get_version() -> str:

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Sequence
 
-from calculator import (
+from time_tracker.core.calculator import (
     AppUsageItem,
     DayMetrics,
     Interval,
@@ -29,8 +29,8 @@ from calculator import (
     half_day_target_hours,
     presence_credit_intervals,
 )
-from config import Config
-from database import Database
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
 
 logger = logging.getLogger(__name__)
 

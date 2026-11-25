@@ -9,8 +9,8 @@ import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import logging_setup
-from config import Config, load_config, normalize_log_level
+import time_tracker.system.logging_setup as logging_setup
+from time_tracker.core.config import Config, load_config, normalize_log_level
 
 
 class LoggingSetUpCase(unittest.TestCase):

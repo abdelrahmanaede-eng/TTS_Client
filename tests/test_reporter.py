@@ -9,9 +9,9 @@ from pathlib import Path
 
 import openpyxl
 
-from config import Config
-from database import Database
-from reporter import export_report
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import export_report
 
 
 class TestReporter(unittest.TestCase):
@@ -109,7 +109,7 @@ class TestReporter(unittest.TestCase):
     def test_export_csv_report(self) -> None:
         import csv
         from datetime import datetime, time
-        from reporter import export_csv_report
+        from time_tracker.reporting.reporter import export_csv_report
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "data.db"

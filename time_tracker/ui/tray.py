@@ -20,10 +20,10 @@ from PIL import Image, ImageDraw
 import pystray
 from pystray import Menu, MenuItem
 
-from autostart import is_autostart_enabled, set_autostart
-from config import APP_VERSION, Config, get_app_dir
-from database import Database
-from dialogs import (
+from time_tracker.system.autostart import is_autostart_enabled, set_autostart
+from time_tracker.core.config import APP_VERSION, Config, get_app_dir
+from time_tracker.core.database import Database
+from time_tracker.ui.dialogs import (
     bidi_text,
     show_about_dialog_async,
     show_date_range_picker_dialog_async,
@@ -35,12 +35,13 @@ from dialogs import (
     show_settings_dialog_async,
     show_update_dialog_async,
 )
-from i18n import t
-from logging_setup import describe_exception, get_log_dir, open_log_folder, set_level
-from reporter import export_csv_bundle, export_pdf_report, export_report
-from tracker import ActivityTracker
-from updater import UpdateInfo, check_for_update, launch_installer
-from visualizer import open_dashboard
+from time_tracker.localization.i18n import t
+from time_tracker.system.logging_setup import describe_exception, get_log_dir, open_log_folder, set_level
+from time_tracker.reporting.reporter import export_csv_bundle, export_pdf_report, export_report
+from time_tracker.core.tracker import ActivityTracker
+from time_tracker.system.updater import UpdateInfo, check_for_update, launch_installer
+from time_tracker.reporting.visualizer import open_dashboard
+from time_tracker.paths import get_app_root
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,7 @@ ICON_COLOR_MAP = {
 
 
 def get_asset_path(filename: str) -> Path:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        base_dir = Path(sys._MEIPASS) / "assets"  # type: ignore
-    else:
-        base_dir = Path(__file__).parent / "assets"
-    return base_dir / filename
+    return get_app_root() / "assets" / filename
 
 
 def create_fallback_icon(hex_color: str) -> Image.Image:
@@ -430,7 +427,7 @@ class TrayApp:
         try:
             if self.db.get_setting("documents_sync_warning_shown") == "1":
                 return
-            from reporter import documents_folder_is_cloud_synced
+            from time_tracker.reporting.reporter import documents_folder_is_cloud_synced
 
             if not documents_folder_is_cloud_synced():
                 return
@@ -638,7 +635,7 @@ class TrayApp:
         def _worker() -> None:
             source = (getattr(self.config, "update_source_path", "") or "").strip()
             if not source:
-                from config import DEFAULT_CONFIG
+                from time_tracker.core.config import DEFAULT_CONFIG
                 source = DEFAULT_CONFIG.get("update_source_path", "")
 
             error_reason: list[str | None] = [None]

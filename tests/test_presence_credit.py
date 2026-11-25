@@ -13,7 +13,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-from calculator import (
+from time_tracker.core.calculator import (
     calculate_app_usage,
     calculate_day_metrics,
     clip_intervals,
@@ -21,9 +21,9 @@ from calculator import (
     presence_credit_intervals,
     total_duration_seconds,
 )
-from config import Config
-from database import Database
-from tracker import ActivityTracker
+from time_tracker.core.config import Config
+from time_tracker.core.database import Database
+from time_tracker.core.tracker import ActivityTracker
 
 WORK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Sun"]
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-import dialogs
-from i18n import TRANSLATIONS
+import time_tracker.ui.dialogs as dialogs
+from time_tracker.localization.i18n import TRANSLATIONS
 
-DIALOGS_PATH = Path(__file__).resolve().parent.parent / "dialogs.py"
+DIALOGS_PATH = Path(dialogs.__file__)
 
 
 class TestRtlFlags(unittest.TestCase):

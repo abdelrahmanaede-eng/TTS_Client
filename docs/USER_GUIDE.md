@@ -398,7 +398,7 @@ Tray → **Export Excel Report** — بينتج ملف `.xlsx` فيه 5 شيتا
 2. جمّع كل الملفات (`TimeReport_*.xlsx`) في فولدر واحد
 3. شغّل الأمر ده:
    ```cmd
-   python aggregate_reports.py
+   python scripts/aggregate_reports.py
    ```
 4. اختار الفولدر → هيولّد ملف `Team_Consolidated_Report_<date>.xlsx`
 

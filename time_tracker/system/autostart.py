@@ -12,6 +12,8 @@ import sys
 import winreg
 from pathlib import Path
 
+from time_tracker.paths import get_app_root
+
 logger = logging.getLogger(__name__)
 
 RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -29,7 +31,7 @@ def get_launch_command() -> str:
     pythonw_exe = Path(python_exe).with_name("pythonw.exe")
     exe_to_use = str(pythonw_exe) if pythonw_exe.exists() else python_exe
 
-    main_script = Path(__file__).parent / "main.py"
+    main_script = get_app_root() / "main.py"
     return f'"{exe_to_use}" "{main_script.resolve()}"'
 
 

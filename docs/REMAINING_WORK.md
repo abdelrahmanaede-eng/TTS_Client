@@ -50,4 +50,4 @@
 - **RTL:** مؤشرات الـ Checkbox/Radio بقت على اليمين في العربي (ttk layout + factory موحّد)،
   وترجمة قائمة التراَ بقت بتمرّ عبر `bidi_text`. سهم القوائم الفرعية في قائمة Windows الأصلية
   مش قابل للعكس من Python (حدّ المنصّة). `tests/test_rtl_widgets.py` (6).
-- **الاختبارات الكاملة:** `python -m pytest tests -q` → **332 passed**.
+- **الاختبارات الكاملة:** `python -m pytest tests -q` → **335 passed**.

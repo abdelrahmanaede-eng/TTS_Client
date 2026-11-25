@@ -21,7 +21,7 @@ from pathlib import Path
 
 import openpyxl
 
-from calculator import (
+from time_tracker.core.calculator import (
     calculate_active_seconds,
     calculate_app_usage,
     calculate_day_metrics,
@@ -36,9 +36,9 @@ from calculator import (
     subtract_intervals,
     total_duration_seconds,
 )
-from config import Config, load_config
-from database import Database
-from reporter import export_report
+from time_tracker.core.config import Config, load_config
+from time_tracker.core.database import Database
+from time_tracker.reporting.reporter import export_report
 
 
 # ---------------------------------------------------------------------------

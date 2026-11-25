@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-import dialogs
+import time_tracker.ui.dialogs as dialogs
 
 SOURCE = Path(dialogs.__file__).read_text(encoding="utf-8")
 

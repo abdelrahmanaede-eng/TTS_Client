@@ -15,9 +15,9 @@ ROOT_DIR = SCRIPT_DIR.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from config import Config, load_config
-from database import Database, get_default_db_path
-from retention import aggregate_day, aggregate_missing_days
+from time_tracker.core.config import Config, load_config
+from time_tracker.core.database import Database, get_default_db_path
+from time_tracker.core.retention import aggregate_day, aggregate_missing_days
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("seed_data")
