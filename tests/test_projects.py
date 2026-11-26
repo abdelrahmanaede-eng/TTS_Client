@@ -190,6 +190,18 @@ class TestTrackerCurrentProject(unittest.TestCase):
         self.assertIsNotNone(menu)
         self.assertGreater(len(menu.items), 0)
 
+    def test_tray_menu_includes_logout_for_signed_in_user(self) -> None:
+        from time_tracker.localization.i18n import t
+        from time_tracker.system.tts_auth import TrackerAuthProfile, TrackerAuthSession
+        from time_tracker.ui.tray import TrayApp
+
+        profile = TrackerAuthProfile("bussma", "employee@example.com", "device-id", "device-token")
+        session = TrackerAuthSession(profile, "access-token", None, "employee-1", "Employee One")
+        app = TrayApp(self.db, self.config, self.tracker, auth_session=session)
+
+        labels = [item.text for item in app._build_menu().items if hasattr(item, "text")]
+
+        self.assertIn(t("action_logout", self.config.language), labels)
 
 if __name__ == "__main__":
     unittest.main()

@@ -3374,3 +3374,210 @@ def show_consent_dialog_async(
                 on_decline()
 
     dispatch_to_ui(_show)
+
+
+def show_tracker_login_dialog_async(
+    on_submit: Callable[[str, str, str, str], None],
+    on_cancel: Callable[[], None],
+    *,
+    tenant: str = "",
+    email: str = "",
+    server_url: str = "https://apiv2.bussma.com",
+    server_url_expanded: bool = False,
+    error_message: str | None = None,
+    lang: str = "en",
+) -> None:
+    """Collect required ERP sign-in details without saving the employee password."""
+    def _show() -> None:
+        answered = False
+        try:
+            master = ensure_ui_thread()
+            if not _tk_available or master is None:
+                raise RuntimeError("Tkinter unavailable")
+
+            win = tk.Toplevel(master)
+            win.title(t("tracker_login_title", lang))
+            win.resizable(False, False)
+            win.attributes("-topmost", True)
+            fit_dialog(win, 460, 430 if error_message else 390)
+            win.configure(bg="#f8f9fa")
+
+            header = tk.Frame(win, bg="#0f2b48", padx=22, pady=11)
+            header.pack(fill="x")
+            tk.Label(
+                header,
+                text=t("tracker_login_title", lang),
+                font=("Segoe UI", 11, "bold"),
+                bg="#0f2b48",
+                fg="#ffffff",
+            ).pack(anchor="w" if lang == "en" else "e")
+
+            body = tk.Frame(win, bg="#f8f9fa", padx=24, pady=12)
+            body.pack(fill="both", expand=True)
+            align = "left" if lang == "en" else "right"
+            anchor = "w" if lang == "en" else "e"
+            tk.Label(
+                body,
+                text=t("tracker_login_notice", lang),
+                font=("Segoe UI", 9),
+                bg="#f8f9fa",
+                fg="#334155",
+                justify=align,
+                anchor=anchor,
+                wraplength=410,
+            ).pack(fill="x", pady=(0, 8))
+
+            status = tk.Label(
+                body,
+                text=error_message or "",
+                font=("Segoe UI", 9),
+                bg="#f8f9fa",
+                fg="#b91c1c",
+                justify=align,
+                anchor=anchor,
+                wraplength=410,
+            )
+            if error_message:
+                status.pack(fill="x", pady=(0, 6))
+
+            tenant_var = tk.StringVar(value=tenant)
+            email_var = tk.StringVar(value=email)
+            password_var = tk.StringVar()
+            server_url_var = tk.StringVar(value=server_url)
+
+            def add_field(
+                label_key: str,
+                variable: tk.StringVar,
+                *,
+                secret: bool = False,
+            ) -> tuple[tk.Label, ttk.Entry]:
+                label = tk.Label(
+                    body,
+                    text=t(label_key, lang),
+                    font=("Segoe UI", 9, "bold"),
+                    bg="#f8f9fa",
+                    fg="#1f2937",
+                    anchor=anchor,
+                )
+                label.pack(fill="x", pady=(4, 2))
+                entry = ttk.Entry(body, textvariable=variable, show="*" if secret else "")
+                entry.pack(fill="x")
+                return label, entry
+
+            tenant_label, tenant_entry = add_field("tracker_login_tenant", tenant_var)
+            add_field("tracker_login_email", email_var)
+            _, password_entry = add_field("tracker_login_password", password_var, secret=True)
+
+            server_panel = tk.Frame(body, bg="#f8f9fa")
+            tk.Label(
+                server_panel,
+                text=t("tracker_login_server_url", lang),
+                font=("Segoe UI", 9, "bold"),
+                bg="#f8f9fa",
+                fg="#1f2937",
+            ).pack(fill="x", pady=(4, 3))
+            ttk.Entry(server_panel, textvariable=server_url_var).pack(fill="x")
+            server_expanded = [server_url_expanded]
+
+            def toggle_server_url() -> None:
+                server_expanded[0] = not server_expanded[0]
+                if server_expanded[0]:
+                    server_panel.pack(fill="x", pady=(0, 5))
+                    server_button.configure(text=t("tracker_login_server_url_hide", lang))
+                else:
+                    server_panel.pack_forget()
+                    server_button.configure(text=t("tracker_login_server_url_show", lang))
+                fit_dialog(win, 460, 450 if server_expanded[0] else 390)
+
+            server_button = ttk.Button(
+                body,
+                text=t(
+                    "tracker_login_server_url_hide" if server_expanded[0] else "tracker_login_server_url_show",
+                    lang,
+                ),
+                command=toggle_server_url,
+            )
+            server_button.pack(anchor="w" if lang == "en" else "e", pady=(8, 2))
+            if server_expanded[0]:
+                server_panel.pack(fill="x", pady=(0, 5))
+
+            buttons = tk.Frame(win, bg="#f8f9fa", padx=20, pady=10)
+            buttons.pack(fill="x")
+
+            def show_status(message: str) -> None:
+                status.configure(text=message)
+                if not status.winfo_manager():
+                    status.pack(fill="x", pady=(0, 6), before=tenant_label)
+                    fit_dialog(win, 460, 430 if server_expanded[0] else 410)
+
+            def cancel() -> None:
+                nonlocal answered
+                if answered:
+                    return
+                answered = True
+                win.destroy()
+                on_cancel()
+
+            def submit() -> None:
+                nonlocal answered
+                if answered:
+                    return
+                clean_tenant = tenant_var.get().strip()
+                clean_email = email_var.get().strip()
+                password = password_var.get()
+                clean_server_url = server_url_var.get().strip()
+                if not clean_tenant or not clean_email or not password:
+                    show_status(t("tracker_login_required", lang))
+                    return
+                if not clean_server_url:
+                    show_status(t("tracker_login_server_url_required", lang))
+                    return
+                answered = True
+                win.destroy()
+                on_submit(clean_tenant, clean_email, password, clean_server_url)
+
+            win.protocol("WM_DELETE_WINDOW", cancel)
+            win.bind("<Escape>", lambda _event: cancel())
+            win.bind("<Return>", lambda _event: submit())
+            tk.Button(
+                buttons,
+                text=t("tracker_login_submit", lang),
+                command=submit,
+                font=("Segoe UI", 9, "bold"),
+                bg="#0f2b48",
+                fg="#ffffff",
+                activebackground="#17456f",
+                activeforeground="#ffffff",
+                relief="flat",
+                padx=16,
+                pady=6,
+                cursor="hand2",
+            ).pack(
+                side="right" if lang == "en" else "left", padx=5
+            )
+            tk.Button(
+                buttons,
+                text=t("tracker_login_exit", lang),
+                command=cancel,
+                font=("Segoe UI", 9),
+                bg="#e2e8f0",
+                fg="#334155",
+                activebackground="#cbd5e1",
+                relief="flat",
+                padx=12,
+                pady=6,
+                cursor="hand2",
+            ).pack(
+                side="right" if lang == "en" else "left", padx=5
+            )
+
+            apply_rtl(win, lang)
+            win.lift()
+            win.focus_force()
+            (tenant_entry if not tenant else password_entry).focus_set()
+        except Exception as exc:
+            logger.error("Error showing TTS login dialog: %s", exc, exc_info=True)
+            if not answered:
+                on_cancel()
+
+    dispatch_to_ui(_show, fallback=on_cancel)

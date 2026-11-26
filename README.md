@@ -1,6 +1,6 @@
 # TimeTracker — Simple Windows Tray App for Employee Work Hours
 
-TimeTracker is a lightweight, local-only Windows system tray application designed to answer one question at the end of the day:
+TimeTracker is a lightweight, local-first Windows system tray application designed to answer one question at the end of the day:
 **"How many of my working hours did I work today?"**
 
 The daily target and the working window are defaults, not constants: both are configurable in Settings (a default 8 h day, 09:30-17:30). Current version: **1.4.4** (source of truth: `time_tracker/core/config.py` → `APP_VERSION`).
@@ -80,7 +80,7 @@ The source modules live under `time_tracker/` in focused packages. The root `mai
 
 ## Key Features
 
-- **Privacy-First & Local-First:** No telemetry and no administrator privileges required. Optional, user-controlled network features exist (online auto-update from a configured source and a loopback-only dashboard HTTP server) and can be disabled.
+- **Privacy-First & Local-First:** No telemetry and no administrator privileges required. ERP sign-in is required before tracking starts; tenant/email/password are sent over HTTPS only for authentication, and the password is never saved. The server URL can be changed from the login form, and the device token is encrypted with Windows DPAPI. Activity sync is not enabled yet.
 - **Privacy-First Activity Monitoring:** Uses standard Win32 `GetLastInputInfo` through `ctypes`. **Never records keystrokes, active window titles, URLs, clipboard content, or screenshots.**
 - **First-Run Privacy Consent:** Displays an upfront transparency screen on first launch explaining exactly what is and is not monitored.
 - **Trailing Grace Period Model:** Intelligently attributes work time using a 180-second trailing grace period following input events.
@@ -220,9 +220,19 @@ The app checks at startup and once a day. If `version.json` advertises a newer v
 ## Local Data, Privacy & Retention
 
 - Database: `%LOCALAPPDATA%\TimeTracker\data.db`; settings: `%LOCALAPPDATA%\TimeTracker\config.json`.
+- Optional ERP device credentials: `%LOCALAPPDATA%\TimeTracker\tracker_device_auth.bin` (encrypted with Windows DPAPI).
 - Backups: `%USERPROFILE%\Documents\TimeTracker\Backups`; reports: `%USERPROFILE%\Documents\TimeTracker\Reports`.
-- Raw input events older than `retention_days` (default 90, `0` = forever) are aggregated into `daily_summary` and then deleted. Aggregated days remain visible in every report, and no data ever leaves the machine.
-- No telemetry and no data upload: tracking data never leaves the machine. The dashboard is an optional loopback-only HTTP server (`127.0.0.1`, 128-bit token, disable with `enable_dashboard_server=false`), and the optional auto-update can use either a user-configured local/UNC share or an HTTPS update URL; both are strictly opt-in.
+- Raw input events older than `retention_days` (default 90, `0` = forever) are aggregated into `daily_summary` and then deleted. Aggregated days remain visible in every report.
+- No telemetry or activity upload is enabled in this login-only integration step. The dashboard is an optional loopback-only HTTP server (`127.0.0.1`, 128-bit token, disable with `enable_dashboard_server=false`), and the optional auto-update can use either a user-configured local/UNC share or an HTTPS update URL; both are strictly opt-in.
+
+## ERP Sign-in (login integration stage)
+
+- API base URL defaults to `https://apiv2.bussma.com`; expand **Server URL** on the login form to change it. The form asks for the company tenant code (`X-Tenant`), ERP email, and password.
+- First sign-in calls `POST /api/tracker/auth/login`. The password is sent over HTTPS for authentication only and is never written to disk.
+- The returned device token, server URL, tenant, email, and stable device id are protected with Windows DPAPI in `tracker_device_auth.bin`. On later launches, the app calls `POST /api/tracker/auth/token` to obtain a fresh access token.
+- If the server rejects the saved device token, the app asks the employee to sign in again. If login cannot be completed or the login window is closed, the application exits before tracking starts.
+- **Log out** from the tray's right-click menu revokes this device on the server, removes the saved profile, and closes the app.
+- This stage verifies authentication only. It does **not** yet upload activity events or sessions to the ERP server.
 
 ---
 

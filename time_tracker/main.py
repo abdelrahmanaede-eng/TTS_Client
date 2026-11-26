@@ -28,7 +28,17 @@ from time_tracker.system.logging_setup import (
     setup_logging,
 )
 from time_tracker.core.tracker import ActivityTracker
+from time_tracker.system.tts_auth import (
+    TrackerAuthClient,
+    TrackerAuthError,
+    TrackerAuthProfile,
+    TrackerAuthSession,
+    TrackerCredentialStoreError,
+    load_profile,
+    save_profile,
+)
 from time_tracker.ui.tray import TrayApp
+from time_tracker.localization.i18n import t
 
 # Mutex constants
 ERROR_ALREADY_EXISTS = 183
@@ -98,6 +108,125 @@ def check_config_integrity(db: Database, config: Config) -> None:
 
     db.set_setting("known_work_end", config.work_end)
     db.set_setting("known_work_days", curr_days_str)
+
+
+def _tracker_auth_error_text(error: TrackerAuthError, lang: str) -> str:
+    messages = {
+        "auth.invalid_credentials": "tracker_login_invalid_credentials",
+        "auth.inactive_employee": "tracker_login_inactive_employee",
+        "auth.locked_out": "tracker_login_locked_out",
+        "tracker.device_invalid": "tracker_login_device_invalid",
+        "tracker.relogin_required": "tracker_login_required_again",
+        "tracker.server_url_invalid": "tracker_login_server_url_invalid",
+        "tenant.required": "tracker_login_tenant_required",
+        "tenant.not_found": "tracker_login_tenant_not_found",
+    }
+    if error.is_temporary:
+        return t("tracker_login_server_unavailable", lang)
+    if error.code in messages:
+        return t(messages[error.code], lang)
+    return error.message
+
+
+def _authenticate_tracker_at_startup(config: Config) -> TrackerAuthSession | None:
+    from time_tracker.ui.dialogs import show_tracker_login_dialog_async
+
+    profile = load_profile()
+    if profile is None:
+        profile = TrackerAuthProfile.new()
+        try:
+            save_profile(profile)
+        except TrackerCredentialStoreError as exc:
+            logging.error("Could not initialize secure TTS credential storage: %s", exc)
+            notify_user(
+                t("tracker_login_title", config.language),
+                t("tracker_login_secure_storage_error", config.language),
+            )
+            return None
+
+    prompt_error: str | None = None
+    if profile.device_token:
+        try:
+            client = TrackerAuthClient(profile.server_url)
+            session = client.refresh(profile)
+            save_profile(session.profile)
+            logging.info("TTS server login refreshed for %s.", session.username or profile.email)
+            return session
+        except TrackerAuthError as exc:
+            if exc.is_temporary:
+                logging.warning("Could not refresh the TTS server login: %s", exc)
+            prompt_error = _tracker_auth_error_text(exc, config.language)
+            logging.info("The saved TTS device login needs attention (HTTP %s, %s).", exc.status_code, exc.code)
+        except TrackerCredentialStoreError as exc:
+            logging.error("Could not update secure TTS credentials: %s", exc)
+            notify_user(
+                t("tracker_login_title", config.language),
+                t("tracker_login_secure_storage_error", config.language),
+            )
+            return None
+
+    while True:
+        result: dict[str, str] = {}
+        completed = threading.Event()
+
+        def on_submit(tenant: str, email: str, password: str, server_url: str) -> None:
+            result.update(tenant=tenant, email=email, password=password, server_url=server_url)
+            completed.set()
+
+        def on_cancel() -> None:
+            result["cancelled"] = "1"
+            completed.set()
+
+        show_tracker_login_dialog_async(
+            on_submit,
+            on_cancel,
+            tenant=profile.tenant,
+            email=profile.email,
+            server_url=profile.server_url,
+            error_message=prompt_error,
+            lang=config.language,
+        )
+        prompt_error = None
+        if not completed.wait(timeout=30):
+            logging.error("TTS login dialog did not respond; the application will not start.")
+            return None
+        if "cancelled" in result:
+            logging.info("TTS server sign-in was cancelled; the application will not start.")
+            return None
+
+        profile = TrackerAuthProfile(
+            tenant=result["tenant"],
+            email=result["email"],
+            device_id=profile.device_id,
+            server_url=result["server_url"],
+        )
+        try:
+            save_profile(profile)
+        except TrackerCredentialStoreError as exc:
+            logging.error("Could not save the TTS login profile securely: %s", exc)
+            prompt_error = t("tracker_login_secure_storage_error", config.language)
+            continue
+
+        password = result.pop("password")
+        try:
+            client = TrackerAuthClient(profile.server_url)
+            session = client.login(profile, password)
+        except TrackerAuthError as exc:
+            prompt_error = _tracker_auth_error_text(exc, config.language)
+            logging.warning("TTS server login failed (HTTP %s, %s).", exc.status_code, exc.code)
+            continue
+        finally:
+            password = ""
+
+        try:
+            save_profile(session.profile)
+        except TrackerCredentialStoreError as exc:
+            logging.error("TTS sign-in succeeded but its device token could not be saved: %s", exc)
+            prompt_error = t("tracker_login_secure_storage_error", config.language)
+            continue
+
+        logging.info("TTS server login succeeded for %s.", session.username or profile.email)
+        return session
 
 
 def main() -> None:
@@ -205,6 +334,10 @@ def main() -> None:
             db.set_setting("privacy_consent_accepted", "1")
             logging.info("Privacy consent accepted and recorded.")
 
+        auth_session = _authenticate_tracker_at_startup(config)
+        if auth_session is None:
+            logging.info("No authenticated ERP session; exiting before tracker startup.")
+            sys.exit(0)
         check_config_integrity(db, config)
 
         # Respect the autostart state actually configured on this machine: the
@@ -223,7 +356,7 @@ def main() -> None:
         tracker = ActivityTracker(db, config)
         # Callbacks must be attached before the tracker loop starts so the very
         # first tick can already notify about a local update / reminder.
-        tray_app = TrayApp(db, config, tracker)
+        tray_app = TrayApp(db, config, tracker, auth_session=auth_session)
         tracker.start()
 
         # Item 1a: backfill/refresh daily_summary in the background so the tray

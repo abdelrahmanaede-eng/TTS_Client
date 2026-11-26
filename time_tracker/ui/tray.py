@@ -34,6 +34,7 @@ from time_tracker.ui.dialogs import (
     show_pause_dialog_async,
     show_settings_dialog_async,
     show_update_dialog_async,
+    win32_message_box,
 )
 from time_tracker.localization.i18n import t
 from time_tracker.system.logging_setup import describe_exception, get_log_dir, open_log_folder, set_level
@@ -42,6 +43,13 @@ from time_tracker.core.tracker import ActivityTracker
 from time_tracker.system.updater import UpdateInfo, check_for_update, launch_installer
 from time_tracker.reporting.visualizer import open_dashboard
 from time_tracker.paths import get_app_root
+from time_tracker.system.tts_auth import (
+    TrackerAuthError,
+    TrackerAuthSession,
+    TrackerCredentialStoreError,
+    TrackerAuthClient,
+    clear_profile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,10 +113,17 @@ def is_popup_menu_open() -> bool:
 
 
 class TrayApp:
-    def __init__(self, db: Database, config: Config, tracker: ActivityTracker) -> None:
+    def __init__(
+        self,
+        db: Database,
+        config: Config,
+        tracker: ActivityTracker,
+        auth_session: TrackerAuthSession | None = None,
+    ) -> None:
         self.db = db
         self.config = config
         self.tracker = tracker
+        self.auth_session = auth_session
 
         self._icons: dict[str, Image.Image] = {}
         self._load_icons()
@@ -116,6 +131,8 @@ class TrayApp:
         self._icon: pystray.Icon | None = None
         self._current_icon_state: str = "Active"
         self._is_menu_open: bool = False
+        self._logout_lock = threading.Lock()
+        self._logout_in_progress = False
         # True only when the private pystray menu hook was installed; otherwise
         # the state-change path falls back to a plain menu rebuild (B21).
         self._menu_hook_active: bool = False
@@ -289,6 +306,11 @@ class TrayApp:
             MenuItem(mt("action_check_update", lang), lambda icon, item: self._check_update_manual()),
             MenuItem(mt("action_settings", lang), lambda icon, item: self._open_settings()),
             MenuItem(mt("action_about", lang), lambda icon, item: self._show_about()),
+            MenuItem(
+                mt("action_logout", lang),
+                lambda icon, item: self._logout(),
+                enabled=lambda item: self.auth_session is not None,
+            ),
             MenuItem(mt("action_quit", lang), lambda icon, item: self._quit()),
         ]
 
@@ -754,6 +776,59 @@ class TrayApp:
 
     def _show_about(self) -> None:
         show_about_dialog_async(version=APP_VERSION, lang=self.config.language)
+
+    def _logout(self) -> None:
+        if self.auth_session is None:
+            return
+        with self._logout_lock:
+            if self._logout_in_progress:
+                return
+            self._logout_in_progress = True
+
+        answer = win32_message_box(
+            t("logout_confirm_title", self.config.language),
+            t("logout_confirm_message", self.config.language),
+            0x04 | 0x20,
+        )
+        if answer != 6:
+            with self._logout_lock:
+                self._logout_in_progress = False
+            return
+
+        threading.Thread(target=self._logout_worker, name="TrackerLogout", daemon=True).start()
+
+    def _logout_worker(self) -> None:
+        session = self.auth_session
+        if session is None:
+            return
+        try:
+            TrackerAuthClient(session.profile.server_url).logout(session.profile)
+        except TrackerAuthError as exc:
+            if exc.status_code != 401 and exc.code != "tracker.relogin_required":
+                logger.warning("Could not sign out from the TTS server: %s", exc)
+                self._on_notification(
+                    t("logout_failed", self.config.language),
+                    "BUSSMA_TTS",
+                )
+                with self._logout_lock:
+                    self._logout_in_progress = False
+                return
+            logger.info("The TTS device was already revoked while signing out.")
+
+        try:
+            clear_profile()
+        except TrackerCredentialStoreError as exc:
+            logger.error("Server logout succeeded but the local TTS profile could not be removed: %s", exc)
+            win32_message_box(
+                t("logout_confirm_title", self.config.language),
+                t("logout_local_cleanup_failed", self.config.language),
+                0x10,
+            )
+
+        logger.info("TTS device signed out; stopping the tracker.")
+        self.tracker.stop()
+        if self._icon:
+            self._icon.stop()
 
     def _quit(self) -> None:
         logger.info("Quit requested via tray menu.")
