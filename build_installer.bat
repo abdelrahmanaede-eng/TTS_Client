@@ -99,12 +99,12 @@ echo [2/4] Closing any running TimeTracker instance (if any)...
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\close_running_instance.ps1"
 if errorlevel 1 (
     echo.
-    echo [ERROR] Aborting build: dist\TimeTracker.exe could not be unlocked.
+    echo [ERROR] Aborting build: dist\TimeTracker\TimeTracker.exe could not be unlocked.
     pause
     exit /b 1
 )
 
-echo [2/4] Building TimeTracker.exe with PyInstaller...
+echo [2/4] Building TimeTracker application folder with PyInstaller...
 python -m PyInstaller --clean --noconfirm TimeTracker.spec
 if errorlevel 1 (
     echo.
@@ -142,7 +142,7 @@ if "%SIGN_MODE%"=="thumbprint" goto :sign_thumbprint
 echo [3/4] [WARN] SIGN_CERT_PASSWORD is deprecated: the password is visible in process listings.
 echo       Import the certificate into the CurrentUser store and set SIGN_CERT_THUMBPRINT instead.
 echo [3/4] Signing TimeTracker.exe with the configured certificate...
-"%SIGNTOOL%" sign /fd SHA256 /f "%SIGN_CERT_PATH%" /p "%SIGN_CERT_PASSWORD%" "dist\TimeTracker.exe"
+"%SIGNTOOL%" sign /fd SHA256 /f "%SIGN_CERT_PATH%" /p "%SIGN_CERT_PASSWORD%" "dist\TimeTracker\TimeTracker.exe"
 if errorlevel 1 goto :sign_failed
 :: Pass the same signing tool to Inno Setup so the Setup.exe and the uninstaller
 :: are signed too (see the SIGNING_ENABLED block in installer.iss).
@@ -152,14 +152,14 @@ goto :build_setup
 
 :sign_thumbprint
 echo [3/4] Signing TimeTracker.exe with the certificate store entry...
-"%SIGNTOOL%" sign /fd SHA256 /sha1 "%SIGN_CERT_THUMBPRINT%" "dist\TimeTracker.exe"
+"%SIGNTOOL%" sign /fd SHA256 /sha1 "%SIGN_CERT_THUMBPRINT%" "dist\TimeTracker\TimeTracker.exe"
 if errorlevel 1 goto :sign_failed
 set "SIGN_ARGS=/DSIGNING_ENABLED /Sbycert="%SIGNTOOL%" sign /fd SHA256 /sha1 "%SIGN_CERT_THUMBPRINT%" $f"
 goto :build_setup
 
 :sign_failed
 echo.
-echo [ERROR] Signing dist\TimeTracker.exe failed!
+echo [ERROR] Signing dist\TimeTracker\TimeTracker.exe failed!
 echo Verify the certificate configuration and that the certificate is valid.
 pause
 exit /b 1

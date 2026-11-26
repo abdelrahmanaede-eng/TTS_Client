@@ -3,15 +3,16 @@
     Closes any running TimeTracker instance launched from this project's dist\ folder.
 
 .DESCRIPTION
-    PyInstaller's final step replaces dist\TimeTracker.exe. Windows refuses to
-    delete/replace a file that a running process has locked, which surfaces as:
+    PyInstaller's final step replaces dist\TimeTracker\TimeTracker.exe. Windows
+    refuses to delete/replace a file that a running process has locked, which
+    surfaces as:
 
-        PermissionError: [WinError 5] Access is denied: '...\dist\TimeTracker.exe'
+        PermissionError: [WinError 5] Access is denied: '...\dist\TimeTracker\TimeTracker.exe'
 
     This script terminates ONLY processes whose image path (or command line)
-    points at this project's dist\TimeTracker.exe. An installed copy elsewhere
-    (e.g. under Program Files or %LOCALAPPDATA%) is never touched. It then waits
-    until the file handle is actually released before returning.
+    points at this project's dist\TimeTracker\TimeTracker.exe. An installed
+    copy elsewhere (e.g. under Program Files or %LOCALAPPDATA%) is never
+    touched. It then waits until the file handle is actually released.
 
     Note: terminating the app is abrupt; any in-progress UI state is lost. The
     tracked time itself is already persisted to the SQLite database.
@@ -24,7 +25,7 @@
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$target = Join-Path $projectRoot 'dist\TimeTracker.exe'
+$target = Join-Path $projectRoot 'dist\TimeTracker\TimeTracker.exe'
 
 if (-not (Test-Path -LiteralPath $target)) {
     # Nothing has been built yet, so nothing can be locked.
@@ -77,7 +78,7 @@ for ($attempt = 0; $attempt -lt 10; $attempt++) {
                 [System.IO.FileShare]::None
             )
             $handle.Dispose()
-            Write-Host "[OK] dist\TimeTracker.exe is unlocked and ready to rebuild."
+            Write-Host "[OK] dist\TimeTracker\TimeTracker.exe is unlocked and ready to rebuild."
             exit 0
         }
         catch {
@@ -89,7 +90,7 @@ for ($attempt = 0; $attempt -lt 10; $attempt++) {
 }
 
 Write-Host ""
-Write-Host "[ERROR] dist\TimeTracker.exe is still locked." -ForegroundColor Red
+Write-Host "[ERROR] dist\TimeTracker\TimeTracker.exe is still locked." -ForegroundColor Red
 Write-Host "        Close TimeTracker from the system tray, pause any antivirus scanning" -ForegroundColor Red
 Write-Host "        this folder, then run the build again." -ForegroundColor Red
 exit 1

@@ -365,7 +365,7 @@ Purging raw `input_events` after a fixed 90 days made any older date unreadable 
    - `SIGN_CERT_PATH` - path to the `.pfx`/`.p12` certificate,
    - `SIGN_CERT_PASSWORD` - its password.
    Neither value is stored in the repository.
-2. When both are set, the script locates `signtool.exe` (PATH or the Windows SDK), signs `dist\TimeTracker.exe` with SHA-256, and passes `/DSIGNING_ENABLED /Sbycert="..."` to Inno Setup so the setup executable and the uninstaller are signed too. `installer.iss` guards `SignTool=bycert` and `SignedUninstaller=yes` with `#ifdef SIGNING_ENABLED` inside `[Setup]`.
+2. When both are set, the script locates `signtool.exe` (PATH or the Windows SDK), signs `dist\TimeTracker\TimeTracker.exe` with SHA-256, and passes `/DSIGNING_ENABLED /Sbycert="..."` to Inno Setup so the setup executable and the uninstaller are signed too. `installer.iss` guards `SignTool=bycert` and `SignedUninstaller=yes` with `#ifdef SIGNING_ENABLED` inside `[Setup]`.
 3. When either variable is missing, or `signtool.exe` cannot be found, the step prints a warning and the build continues unsigned. A signing *failure* (variables set but signing returns non-zero) aborts the build instead of shipping a half-signed release.
 4. The build also writes `dist\version.json` with the current `APP_VERSION` and the installer's SHA-256, which is exactly what the local update source needs (Section 19). The same `APP_VERSION` is read from `config.py` and passed to Inno Setup as `/DMyAppVersion=...`, so the installer metadata can never drift from the app version (the literal in `installer.iss` is only a manual-compile fallback).
 

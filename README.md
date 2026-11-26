@@ -30,7 +30,7 @@ Bussma_EA/                      <- workspace root
     ├── docs/                  <- DECISIONS.md, USER_GUIDE.md, test_checklist.md
     ├── scripts/               <- aggregate_reports.py and development/release tools
     ├── tests/                 <- 28 test files / 335 tests (pytest, fully offline)
-    ├── dist/                  <- built artifacts: TimeTracker.exe,
+    ├── dist/                  <- built artifacts: TimeTracker\ app folder,
     │                             TimeTracker_Setup.exe, version.json
     ├── build_installer.bat    <- real build script (PyInstaller + Inno Setup 6)
     ├── upload_installer.bat   <- release upload script
@@ -72,7 +72,7 @@ The source modules live under `time_tracker/` in focused packages. The root `mai
 
 ### Current status (verified 2026-11-25)
 - Version **1.4.4**; full suite **335 passed** (`python -m pytest tests -q`, Python 3.11 / Windows).
-- `dist/TimeTracker_Setup.exe` (~27 MB) + `dist/TimeTracker.exe` (~25 MB) + `dist/version.json` are present and kept.
+- `dist/TimeTracker_Setup.exe` + the `dist/TimeTracker/` app folder + `dist/version.json` are the built artifacts.
 - Open items: PERF-02, QUAL-01, QUAL-02, QUAL-03 (see `docs/REMAINING_WORK.md`) and SEC-01 (revoke the old GitHub token — outside the code).
 - `MANUAL_QA.md` is referenced by older release notes but is no longer present; GUI acceptance checks are not currently documented.
 
@@ -81,7 +81,7 @@ The source modules live under `time_tracker/` in focused packages. The root `mai
 ## Key Features
 
 - **Privacy-First & Local-First:** No telemetry and no administrator privileges required. Optional, user-controlled network features exist (online auto-update from a configured source and a loopback-only dashboard HTTP server) and can be disabled.
-- **Privacy-First Activity Monitoring:** Uses standard Win32 `GetLastInputInfo` through `ctypes`. **Never records keystrokes, active window titles, URLs, clipboard content, or screenshots.** Safe from antivirus false-positives.
+- **Privacy-First Activity Monitoring:** Uses standard Win32 `GetLastInputInfo` through `ctypes`. **Never records keystrokes, active window titles, URLs, clipboard content, or screenshots.**
 - **First-Run Privacy Consent:** Displays an upfront transparency screen on first launch explaining exactly what is and is not monitored.
 - **Trailing Grace Period Model:** Intelligently attributes work time using a 180-second trailing grace period following input events.
 - **Automatic Classification:**
@@ -167,7 +167,7 @@ Run `python main.py --dashboard` (or `-d`) to build and open the visual dashboar
 ### 1-Click Complete Build (Recommended):
 Double-click `build_installer.bat` (or run `build_installer.bat` from terminal).
 It automatically:
-1. Compiles the latest code into `TimeTracker.exe`.
+1. Compiles the latest code into the `dist\TimeTracker\` application folder (PyInstaller onedir; runtime DLLs stay beside the app instead of being extracted to `%TEMP%\_MEI...`).
    - The PyInstaller build excludes Java JDK `bin` folders from dependency resolution so unrelated Windows API-set DLL shims are not bundled.
 2. Optionally signs the executable (see [Code Signing](#code-signing-optional)).
 3. Packages it into a single-file wizard installer `TimeTracker_Setup.exe`.
@@ -179,14 +179,20 @@ It automatically:
   - No Administrator permissions needed (installs in user space).
   - Automatically registers in Windows Startup (runs silently on boot, tray only, no cmd window).
   - Seamless update support: closes any running instance, updates files, and preserves user database & settings.
-- `dist\TimeTracker.exe` (~25 MB): Standalone portable binary.
+- `dist\TimeTracker\`: Application folder; `TimeTracker.exe` must stay with its `_internal` support files and is not a standalone file.
 - `dist\version.json`: `{ "version", "installer", "sha256", "notes" }` used by the local auto-update source.
+
+### Windows Security notice for unsigned builds
+
+Without an Authenticode certificate, Windows may show an unknown-publisher warning or Smart App Control may block the installer or a temporary file it loads. The temporary filename is not, by itself, proof of malware or proof that the file is safe. Disabling Smart App Control, adding broad antivirus exclusions, or renaming the temporary file is not a safe fix.
+
+The build disables UPX to reduce one common source of heuristic alerts, but this cannot establish publisher identity or guarantee that Windows will allow an unsigned build. Verify the installer SHA-256 against the value published by the release owner and distribute it only through a trusted channel. If Microsoft Defender identifies the app as malware, submit the exact file to Microsoft's security intelligence submission portal for review. For consistent publisher verification across devices, use a trusted code-signing certificate; self-signed certificates are not trusted by other PCs by default.
 
 ---
 
 ## Code Signing (Optional)
 
-The build is unsigned by default. To Authenticode-sign the executable, the setup and the uninstaller, set two environment variables before running `build_installer.bat`:
+The build is unsigned by default, so Windows cannot verify the publisher and may block it under Smart App Control. To Authenticode-sign the executable, the setup and the uninstaller, set two environment variables before running `build_installer.bat`:
 
 ```cmd
 set SIGN_CERT_PATH=C:\path\to\certificate.pfx
