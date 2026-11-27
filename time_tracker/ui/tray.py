@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import threading
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable
@@ -25,6 +26,7 @@ from time_tracker.core.config import APP_VERSION, Config, get_app_dir
 from time_tracker.core.database import Database
 from time_tracker.ui.dialogs import (
     bidi_text,
+    dispatch_to_ui,
     show_about_dialog_async,
     show_date_range_picker_dialog_async,
     show_directory_picker_async,
@@ -33,6 +35,7 @@ from time_tracker.ui.dialogs import (
     show_past_meeting_dialog_async,
     show_pause_dialog_async,
     show_settings_dialog_async,
+    show_tracker_login_dialog_async,
     show_update_dialog_async,
     win32_message_box,
 )
@@ -45,13 +48,26 @@ from time_tracker.reporting.visualizer import open_dashboard
 from time_tracker.paths import get_app_root
 from time_tracker.system.tts_auth import (
     TrackerAuthError,
+    TrackerAuthProfile,
     TrackerAuthSession,
     TrackerCredentialStoreError,
     TrackerAuthClient,
     clear_profile,
+    save_profile,
 )
+from time_tracker.system.tts_api import (
+    TrackerApiClient,
+    TrackerApiError,
+    TrackerHelloData,
+    TrackerReauthenticationRequired,
+    TrackerServerSettings,
+    TrackerWorkSession,
+)
+from time_tracker.system.tts_signalr import TrackerSignalRClient
 
 logger = logging.getLogger(__name__)
+
+SERVER_SESSION_FALLBACK_POLL_SECONDS = 15
 
 ICON_COLOR_MAP = {
     "Active": ("icon_active.png", "#28a745"),
@@ -119,11 +135,37 @@ class TrayApp:
         config: Config,
         tracker: ActivityTracker,
         auth_session: TrackerAuthSession | None = None,
+        api_client: TrackerApiClient | None = None,
     ) -> None:
         self.db = db
         self.config = config
         self.tracker = tracker
         self.auth_session = auth_session
+        self.api_client = api_client
+        self._server_state_lock = threading.RLock()
+        self._server_snapshot: TrackerHelloData | None = None
+        self._server_load_state = "loading" if api_client else "not_connected"
+        self._server_request_in_progress = False
+        self._signalr_status = "disconnected"
+        self._menu_refresh_pending = False
+        self._server_poll_stop_event = threading.Event()
+        self._server_poll_thread: threading.Thread | None = None
+        self._reauth_lock = threading.Lock()
+        self._reauth_in_progress = False
+        self.signalr_client = (
+            TrackerSignalRClient(
+                api_client,
+                on_hello=self._on_signalr_hello,
+                on_session_changed=self._on_signalr_session_changed,
+                on_settings_changed=self._on_signalr_settings_changed,
+                on_relogin_required=self._on_signalr_relogin_required,
+                on_status_changed=self._on_signalr_status_changed,
+            )
+            if api_client is not None
+            else None
+        )
+        if self.api_client is not None:
+            self.api_client.set_relogin_handler(self._handle_relogin_required)
 
         self._icons: dict[str, Image.Image] = {}
         self._load_icons()
@@ -179,6 +221,73 @@ class TrayApp:
             worked=worked,
             target=target_h,
             overtime=overtime,
+        )
+
+    def _server_retry_enabled(self) -> bool:
+        with self._server_state_lock:
+            return self.api_client is not None and not self._server_request_in_progress
+
+    def _build_server_submenu(self, mt: Callable[..., str]) -> Menu:
+        with self._server_state_lock:
+            state = self._server_load_state
+            snapshot = self._server_snapshot
+
+        session = self.api_client.session if self.api_client is not None else self.auth_session
+        email = (session.email if session else None) or (session.profile.email if session else "")
+        username = session.username if session else None
+        employee = username or email or t("erp_value_unavailable", self.config.language)
+        if username and email and username.casefold() != email.casefold():
+            employee = f"{username} ({email})"
+
+        if state == "loading":
+            status_text = mt("erp_status_loading")
+        elif state == "reauth_required" or self._signalr_status == "reauth_required":
+            status_text = mt("erp_status_relogin")
+        elif state == "offline":
+            status_text = mt("erp_status_offline")
+        elif self._signalr_status == "connecting":
+            status_text = mt("erp_status_connecting")
+        elif self._signalr_status == "connected":
+            status_text = mt("erp_status_connected")
+        elif state == "ready" and self.signalr_client is None:
+            status_text = mt("erp_status_connected")
+        elif state == "ready":
+            status_text = mt("erp_status_disconnected")
+        elif state == "error":
+            status_text = mt("erp_status_error")
+        else:
+            status_text = mt("erp_status_error")
+
+        active_session = snapshot.session if snapshot else None
+        if active_session and active_session.is_open:
+            session_text = mt("erp_status_active_session")
+            project = active_session.project_name or mt("menu_project_none")
+            allowed = mt("erp_allowed_yes") if active_session.tracker_allowed else mt("erp_allowed_no")
+        elif state == "ready" and self._signalr_status == "connected":
+            session_text = mt("erp_status_no_session")
+            project = mt("menu_project_none")
+            allowed = mt("erp_value_unavailable")
+        elif snapshot and active_session is None:
+            session_text = mt("erp_status_no_session")
+            project = mt("menu_project_none")
+            allowed = mt("erp_value_unavailable")
+        else:
+            session_text = status_text
+            project = mt("erp_value_unavailable")
+            allowed = mt("erp_value_unavailable")
+
+        return Menu(
+            MenuItem(mt("erp_employee", employee=employee), None, enabled=False),
+            MenuItem(mt("erp_connection_status", status=status_text), None, enabled=False),
+            MenuItem(mt("erp_session", session=session_text), None, enabled=False),
+            MenuItem(mt("erp_project", project=project), None, enabled=False),
+            MenuItem(mt("erp_tracking_access", allowed=allowed), None, enabled=False),
+            Menu.SEPARATOR,
+            MenuItem(
+                mt("erp_retry"),
+                lambda icon, item: self._retry_server_session(),
+                enabled=lambda item: self._server_retry_enabled(),
+            ),
         )
 
     def _build_menu(self) -> Menu:
@@ -282,6 +391,8 @@ class TrayApp:
         )
 
         menu_items = [
+            MenuItem(mt("erp_status_menu", lang), self._build_server_submenu(mt)),
+            Menu.SEPARATOR,
             # 1. Progress summaries (single submenu)
             MenuItem(mt("menu_summary_group", lang), summary_submenu),
             # Separator
@@ -296,7 +407,7 @@ class TrayApp:
             # Separator
             Menu.SEPARATOR,
             # 3. Reports & Utilities
-            MenuItem(bidi_text(f"{t('tab_projects', lang)}: {current_label}", lang), project_submenu),
+            MenuItem(bidi_text(f"{t('menu_local_project', lang)}: {current_label}", lang), project_submenu),
             MenuItem(mt("action_dashboard", lang), lambda icon, item: self._open_dashboard()),
             MenuItem(mt("action_export_report", lang), export_submenu),
             MenuItem(mt("export_csv_menu", lang), csv_submenu),
@@ -345,6 +456,264 @@ class TrayApp:
             self._icon.menu = self._build_menu()
         except Exception:
             pass
+
+    def _on_server_state_change(self) -> None:
+        if not self._icon:
+            return
+        dispatch_to_ui(
+            self._refresh_server_menu,
+            fallback=self._mark_menu_refresh_pending,
+        )
+
+    def _refresh_server_menu(self) -> None:
+        if not self._icon:
+            return
+        if self._is_menu_open or is_popup_menu_open():
+            self._mark_menu_refresh_pending()
+            return
+        try:
+            self._icon.menu = self._build_menu()
+            with self._server_state_lock:
+                self._menu_refresh_pending = False
+        except Exception as exc:
+            logger.warning("Could not refresh the server status menu: %s", exc)
+
+    def _mark_menu_refresh_pending(self) -> None:
+        with self._server_state_lock:
+            self._menu_refresh_pending = True
+
+    def _on_signalr_hello(self, snapshot: TrackerHelloData) -> None:
+        with self._server_state_lock:
+            self._server_snapshot = snapshot
+            self._server_load_state = "ready"
+        self._on_server_state_change()
+
+    def _on_signalr_session_changed(self, session: TrackerWorkSession | None) -> None:
+        with self._server_state_lock:
+            if self._server_snapshot is None:
+                self._server_snapshot = TrackerHelloData(session, None, None, (), None)
+            else:
+                self._server_snapshot = replace(self._server_snapshot, session=session)
+        self._on_server_state_change()
+
+    def _on_signalr_settings_changed(self, settings: TrackerServerSettings) -> None:
+        with self._server_state_lock:
+            if self._server_snapshot is None:
+                self._server_snapshot = TrackerHelloData(None, settings, None, (), None)
+            else:
+                self._server_snapshot = replace(self._server_snapshot, settings=settings)
+
+    def _on_signalr_relogin_required(self, reason: str | None) -> None:
+        logger.info("The TTS server requested device reauthentication: %s", reason or "no reason provided")
+        self._handle_relogin_required(reason)
+
+    def _on_signalr_status_changed(self, status: str) -> None:
+        with self._server_state_lock:
+            self._signalr_status = status
+            if status == "reauth_required":
+                self._server_load_state = "reauth_required"
+        self._on_server_state_change()
+
+    def _start_server_fallback_polling(self) -> None:
+        with self._server_state_lock:
+            if self._server_poll_thread is not None and self._server_poll_thread.is_alive():
+                return
+            self._server_poll_stop_event.clear()
+            self._server_poll_thread = threading.Thread(
+                target=self._server_fallback_poll_worker,
+                name="TrackerServerFallbackPoll",
+                daemon=True,
+            )
+            self._server_poll_thread.start()
+
+    def _server_fallback_poll_worker(self) -> None:
+        while not self._server_poll_stop_event.wait(SERVER_SESSION_FALLBACK_POLL_SECONDS):
+            self._refresh_server_session_if_signalr_unavailable()
+
+    def _refresh_server_session_if_signalr_unavailable(self) -> None:
+        with self._server_state_lock:
+            should_refresh = (
+                self.api_client is not None
+                and self._server_snapshot is not None
+                and self._signalr_status != "connected"
+                and self._server_load_state not in {"loading", "reauth_required"}
+                and not self._server_request_in_progress
+            )
+        if should_refresh:
+            self._start_server_request(load_hello=False)
+
+    def _start_server_request(self, *, load_hello: bool) -> None:
+        if self.api_client is None:
+            return
+        with self._server_state_lock:
+            if self._server_request_in_progress:
+                return
+            self._server_request_in_progress = True
+            self._server_load_state = "loading"
+        self._on_server_state_change()
+        threading.Thread(
+            target=self._server_request_worker,
+            args=(load_hello,),
+            name="TrackerServerState",
+            daemon=True,
+        ).start()
+
+    def _server_request_worker(self, load_hello: bool) -> None:
+        api_client = self.api_client
+        if api_client is None:
+            return
+        try:
+            if load_hello:
+                snapshot = api_client.hello()
+            else:
+                session = api_client.get_current_session()
+                with self._server_state_lock:
+                    snapshot = self._server_snapshot
+                    signalr_connected = self._signalr_status == "connected"
+                if snapshot is None:
+                    snapshot = api_client.hello()
+                elif not signalr_connected:
+                    snapshot = replace(snapshot, session=session)
+            with self._server_state_lock:
+                if load_hello or self._signalr_status != "connected":
+                    self._server_snapshot = snapshot
+                self._server_load_state = "ready"
+            if load_hello and self.signalr_client is not None:
+                self.signalr_client.start()
+                self._start_server_fallback_polling()
+        except TrackerReauthenticationRequired as exc:
+            logger.warning("TTS device requires sign-in again: %s", exc.code)
+            with self._server_state_lock:
+                self._server_load_state = "reauth_required"
+        except TrackerApiError as exc:
+            logger.warning("Could not load TTS server state (%s): %s", exc.code, exc.message)
+            with self._server_state_lock:
+                self._server_load_state = "offline" if exc.is_temporary else "error"
+        except Exception:
+            logger.exception("Unexpected failure while loading TTS server state.")
+            with self._server_state_lock:
+                self._server_load_state = "error"
+        finally:
+            with self._server_state_lock:
+                self._server_request_in_progress = False
+            self._on_server_state_change()
+
+    def _retry_server_session(self) -> None:
+        with self._server_state_lock:
+            load_hello = self._server_snapshot is None
+            state = self._server_load_state
+            signalr_status = self._signalr_status
+        if state == "reauth_required":
+            return
+        if self.signalr_client is not None and signalr_status != "connected":
+            if self.signalr_client.is_running:
+                self.signalr_client.retry()
+            elif state == "ready":
+                self.signalr_client.start()
+            else:
+                self._start_server_request(load_hello=True)
+            return
+        self._start_server_request(load_hello=load_hello)
+
+    def _handle_relogin_required(self, reason: str | None = None) -> None:
+        with self._reauth_lock:
+            if self._reauth_in_progress:
+                return
+            self._reauth_in_progress = True
+        with self._server_state_lock:
+            self._server_load_state = "reauth_required"
+        if self.signalr_client is not None:
+            self.signalr_client.request_stop()
+        self._on_server_state_change()
+
+        session = self.api_client.session if self.api_client is not None else self.auth_session
+        if session is None:
+            self._quit()
+            return
+        profile_without_token = replace(session.profile, device_token="")
+        try:
+            save_profile(profile_without_token)
+        except TrackerCredentialStoreError as exc:
+            logger.error("Could not remove the revoked device token from secure storage: %s", exc)
+            self._on_notification(
+                t("tracker_login_secure_storage_error", self.config.language),
+                "BUSSMA_TTS",
+            )
+            self._quit()
+            return
+        session_without_token = replace(session, profile=profile_without_token)
+        self.auth_session = session_without_token
+        if self.api_client is not None:
+            self.api_client.replace_session(session_without_token)
+        self._show_relogin_dialog(
+            session_without_token,
+            t("tracker_login_required_again", self.config.language),
+        )
+
+    def _show_relogin_dialog(self, session: TrackerAuthSession, error_message: str) -> None:
+        def on_submit(tenant: str, email: str, password: str, server_url: str) -> None:
+            profile = TrackerAuthProfile(
+                tenant=tenant,
+                email=email,
+                device_id=session.profile.device_id,
+                server_url=server_url,
+            )
+            threading.Thread(
+                target=self._complete_relogin,
+                args=(profile, password),
+                name="TrackerRelogin",
+                daemon=True,
+            ).start()
+
+        def on_cancel() -> None:
+            with self._reauth_lock:
+                self._reauth_in_progress = False
+            self._quit()
+
+        show_tracker_login_dialog_async(
+            on_submit,
+            on_cancel,
+            tenant=session.profile.tenant,
+            email=session.profile.email,
+            server_url=session.profile.server_url,
+            error_message=error_message,
+            lang=self.config.language,
+        )
+
+    def _complete_relogin(self, profile: TrackerAuthProfile, password: str) -> None:
+        try:
+            session = TrackerAuthClient(profile.server_url).login(profile, password)
+            save_profile(session.profile)
+        except TrackerAuthError as exc:
+            logger.warning("TTS sign-in after token revocation failed (%s).", exc.code)
+            message = (
+                t("tracker_login_server_unavailable", self.config.language)
+                if exc.is_temporary
+                else exc.message
+            )
+            current_session = self.api_client.session if self.api_client is not None else self.auth_session
+            if current_session is not None:
+                self._show_relogin_dialog(current_session, message)
+            return
+        except TrackerCredentialStoreError as exc:
+            logger.error("Could not securely save the renewed TTS device credentials: %s", exc)
+            self._on_notification(
+                t("tracker_login_secure_storage_error", self.config.language),
+                "BUSSMA_TTS",
+            )
+            self._quit()
+            return
+        finally:
+            password = ""
+
+        if self.signalr_client is not None:
+            self.signalr_client.stop()
+        if self.api_client is not None:
+            self.api_client.replace_session(session)
+        self.auth_session = session
+        with self._reauth_lock:
+            self._reauth_in_progress = False
+        self._start_server_request(load_hello=True)
 
     def _on_notification(self, message: str, title: str) -> None:
         if self._icon:
@@ -785,6 +1154,13 @@ class TrayApp:
                 return
             self._logout_in_progress = True
 
+        threading.Thread(
+            target=self._confirm_logout_worker,
+            name="TrackerLogoutConfirm",
+            daemon=True,
+        ).start()
+
+    def _confirm_logout_worker(self) -> None:
         answer = win32_message_box(
             t("logout_confirm_title", self.config.language),
             t("logout_confirm_message", self.config.language),
@@ -795,10 +1171,10 @@ class TrayApp:
                 self._logout_in_progress = False
             return
 
-        threading.Thread(target=self._logout_worker, name="TrackerLogout", daemon=True).start()
+        self._logout_worker()
 
     def _logout_worker(self) -> None:
-        session = self.auth_session
+        session = self.api_client.session if self.api_client is not None else self.auth_session
         if session is None:
             return
         try:
@@ -825,6 +1201,9 @@ class TrayApp:
                 0x10,
             )
 
+        if self.signalr_client is not None:
+            self.signalr_client.stop()
+        self._server_poll_stop_event.set()
         logger.info("TTS device signed out; stopping the tracker.")
         self.tracker.stop()
         if self._icon:
@@ -832,6 +1211,7 @@ class TrayApp:
 
     def _quit(self) -> None:
         logger.info("Quit requested via tray menu.")
+        self._server_poll_stop_event.set()
         self.tracker.stop()
         if self._icon:
             self._icon.stop()
@@ -884,4 +1264,11 @@ class TrayApp:
         self._hook_icon_menu_events()
 
         logger.info("TrayApp starting event loop.")
-        self._icon.run()
+        if self.api_client is not None:
+            self._start_server_request(load_hello=True)
+        try:
+            self._icon.run()
+        finally:
+            self._server_poll_stop_event.set()
+            if self.signalr_client is not None:
+                self.signalr_client.stop()

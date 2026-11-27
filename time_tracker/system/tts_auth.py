@@ -61,6 +61,7 @@ class TrackerAuthSession:
     expiry_date: str | None
     user_id: str | None
     username: str | None
+    email: str | None = None
 
 
 class _DataBlob(ctypes.Structure):
@@ -290,7 +291,7 @@ class TrackerAuthClient:
                 error_body = json.loads(exc.read().decode("utf-8"))
             except (UnicodeError, json.JSONDecodeError):
                 error_body = {}
-            code, message = _problem_details(error_body)
+            code, message = problem_details(error_body)
             raise TrackerAuthError(exc.code, code, message) from exc
         except (URLError, TimeoutError, OSError) as exc:
             raise TrackerAuthError(None, "network_error", str(exc) or "The ERP server is unavailable.") from exc
@@ -323,16 +324,18 @@ class TrackerAuthClient:
         )
         user_id = login.get("userId")
         username = login.get("username")
+        email = login.get("email")
         return TrackerAuthSession(
             profile=updated_profile,
             access_token=access_token,
             expiry_date=login.get("expiryDate") if isinstance(login.get("expiryDate"), str) else None,
             user_id=str(user_id) if user_id is not None else None,
             username=str(username) if username is not None else None,
+            email=email if isinstance(email, str) else None,
         )
 
 
-def _problem_details(data: Any) -> tuple[str, str]:
+def problem_details(data: Any) -> tuple[str, str]:
     if not isinstance(data, dict):
         return "http_error", "The ERP server rejected the request."
     extensions = data.get("extensions")

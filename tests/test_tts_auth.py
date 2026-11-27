@@ -49,6 +49,7 @@ def test_login_sends_tenant_and_credentials_to_tracker_endpoint(monkeypatch: pyt
                     "expiryDate": "2026-11-27T00:00:00Z",
                     "userId": "employee-1",
                     "username": "Employee One",
+                    "email": "employee@example.com",
                 },
             }
         )
@@ -70,6 +71,7 @@ def test_login_sends_tenant_and_credentials_to_tracker_endpoint(monkeypatch: pyt
     assert session.access_token == "access-token"
     assert session.profile.device_token == "device-token"
     assert session.profile.tenant == "bussma"
+    assert session.email == "employee@example.com"
 
 
 def test_refresh_reports_relogin_required_without_hiding_http_code(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -231,6 +233,21 @@ def test_startup_prompts_again_when_device_refresh_is_revoked(monkeypatch: pytes
         prompt["message"] = str(kwargs["error_message"])
         on_submit("bussma", "employee@example.com", "new-password", str(kwargs["server_url"]))
 
+    wait_timeouts: list[float | None] = []
+    real_event = app_main.threading.Event
+
+    class _WaitEvent:
+        def __init__(self) -> None:
+            self._event = real_event()
+
+        def set(self) -> None:
+            self._event.set()
+
+        def wait(self, timeout: float | None = None) -> bool:
+            wait_timeouts.append(timeout)
+            return self._event.wait(timeout)
+
+    monkeypatch.setattr(app_main.threading, "Event", _WaitEvent)
     monkeypatch.setattr(app_main, "load_profile", lambda: old_profile)
     monkeypatch.setattr(app_main, "save_profile", saved_profiles.append)
     monkeypatch.setattr(app_main, "TrackerAuthClient", _Client)
@@ -239,6 +256,7 @@ def test_startup_prompts_again_when_device_refresh_is_revoked(monkeypatch: pytes
     session = app_main._authenticate_tracker_at_startup(Config())
 
     assert session == expected_session
+    assert wait_timeouts == [None]
     assert prompt["message"] == "Your saved sign-in is no longer valid. Sign in again; your password may have changed or device access may have been revoked."
     assert client_urls == ["https://tracker.example.test", "https://tracker.example.test"]
     assert saved_profiles[0].device_token == ""

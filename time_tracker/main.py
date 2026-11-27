@@ -37,6 +37,7 @@ from time_tracker.system.tts_auth import (
     load_profile,
     save_profile,
 )
+from time_tracker.system.tts_api import TrackerApiClient
 from time_tracker.ui.tray import TrayApp
 from time_tracker.localization.i18n import t
 
@@ -187,9 +188,7 @@ def _authenticate_tracker_at_startup(config: Config) -> TrackerAuthSession | Non
             lang=config.language,
         )
         prompt_error = None
-        if not completed.wait(timeout=30):
-            logging.error("TTS login dialog did not respond; the application will not start.")
-            return None
+        completed.wait()
         if "cancelled" in result:
             logging.info("TTS server sign-in was cancelled; the application will not start.")
             return None
@@ -356,7 +355,8 @@ def main() -> None:
         tracker = ActivityTracker(db, config)
         # Callbacks must be attached before the tracker loop starts so the very
         # first tick can already notify about a local update / reminder.
-        tray_app = TrayApp(db, config, tracker, auth_session=auth_session)
+        api_client = TrackerApiClient(auth_session)
+        tray_app = TrayApp(db, config, tracker, auth_session=auth_session, api_client=api_client)
         tracker.start()
 
         # Item 1a: backfill/refresh daily_summary in the background so the tray

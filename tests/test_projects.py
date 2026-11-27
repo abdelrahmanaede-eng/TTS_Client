@@ -193,15 +193,41 @@ class TestTrackerCurrentProject(unittest.TestCase):
     def test_tray_menu_includes_logout_for_signed_in_user(self) -> None:
         from time_tracker.localization.i18n import t
         from time_tracker.system.tts_auth import TrackerAuthProfile, TrackerAuthSession
+        from time_tracker.system.tts_api import TrackerHelloData, TrackerWorkSession
         from time_tracker.ui.tray import TrayApp
 
+        local_project_id = self.db.add_project("Legacy local")
+        self.tracker.set_current_project(local_project_id)
         profile = TrackerAuthProfile("bussma", "employee@example.com", "device-id", "device-token")
         session = TrackerAuthSession(profile, "access-token", None, "employee-1", "Employee One")
         app = TrayApp(self.db, self.config, self.tracker, auth_session=session)
+        app._server_load_state = "ready"
+        app._server_snapshot = TrackerHelloData(
+            TrackerWorkSession("attendance-1", "server-project", "ERP Project", None, True, True),
+            None,
+            None,
+            (),
+            None,
+        )
 
-        labels = [item.text for item in app._build_menu().items if hasattr(item, "text")]
+        menu = app._build_menu()
+        labels = [item.text for item in menu.items if hasattr(item, "text")]
 
         self.assertIn(t("action_logout", self.config.language), labels)
+        self.assertIn("Local report project: Legacy local", labels)
+        def translate(key: str, _lang: str | None = None, **kwargs: object) -> str:
+            return t(key, self.config.language, **kwargs)
+
+        server_menu = app._build_server_submenu(translate)
+        server_labels = [item.text for item in server_menu.items if hasattr(item, "text")]
+        self.assertIn("Server project: ERP Project", server_labels)
+
+        from unittest.mock import patch
+        with patch("time_tracker.ui.tray.dispatch_to_ui"):
+            app._on_signalr_session_changed(None)
+        cleared_server_menu = app._build_server_submenu(translate)
+        cleared_server_labels = [item.text for item in cleared_server_menu.items if hasattr(item, "text")]
+        self.assertIn("Server project: None", cleared_server_labels)
 
 if __name__ == "__main__":
     unittest.main()

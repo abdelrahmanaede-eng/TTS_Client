@@ -223,16 +223,20 @@ The app checks at startup and once a day. If `version.json` advertises a newer v
 - Optional ERP device credentials: `%LOCALAPPDATA%\TimeTracker\tracker_device_auth.bin` (encrypted with Windows DPAPI).
 - Backups: `%USERPROFILE%\Documents\TimeTracker\Backups`; reports: `%USERPROFILE%\Documents\TimeTracker\Reports`.
 - Raw input events older than `retention_days` (default 90, `0` = forever) are aggregated into `daily_summary` and then deleted. Aggregated days remain visible in every report.
-- No telemetry or activity upload is enabled in this login-only integration step. The dashboard is an optional loopback-only HTTP server (`127.0.0.1`, 128-bit token, disable with `enable_dashboard_server=false`), and the optional auto-update can use either a user-configured local/UNC share or an HTTPS update URL; both are strictly opt-in.
+- No telemetry or activity upload is enabled in this integration phase. The dashboard is an optional loopback-only HTTP server (`127.0.0.1`, 128-bit token, disable with `enable_dashboard_server=false`), and the optional auto-update can use either a user-configured local/UNC share or an HTTPS update URL; both are strictly opt-in.
 
-## ERP Sign-in (login integration stage)
+## ERP Sign-in, read-only server state, and live updates (Phase 2)
 
 - API base URL defaults to `https://apiv2.bussma.com`; expand **Server URL** on the login form to change it. The form asks for the company tenant code (`X-Tenant`), ERP email, and password.
 - First sign-in calls `POST /api/tracker/auth/login`. The password is sent over HTTPS for authentication only and is never written to disk.
-- The returned device token, server URL, tenant, email, and stable device id are protected with Windows DPAPI in `tracker_device_auth.bin`. On later launches, the app calls `POST /api/tracker/auth/token` to obtain a fresh access token.
+- The device token, server URL, tenant, email, and stable device id are protected with Windows DPAPI in `tracker_device_auth.bin`. The short-lived access token stays in memory; on later launches, the app calls `POST /api/tracker/auth/token` to obtain a fresh one.
 - If the server rejects the saved device token, the app asks the employee to sign in again. If login cannot be completed or the login window is closed, the application exits before tracking starts.
+- After sign-in, the client calls `POST /api/Attendance/tracker/hello` and displays the employee, active server session, and its project as read-only ERP state. **Retry server session** calls the documented `GET /api/Attendance/tracker/current`. Server settings, shift, and holidays are kept in memory for later phases; local work-hours calculations are unchanged.
+- A 401 on a server request triggers one device-token refresh and request retry. Network failures leave local tracking and reports running and can be retried from the tray. Local project tags remain separate from the server's official current project.
+- The client connects to `/hubs/tracker` with the current access token in the documented `Authorization: Bearer` header. It invokes `Hello({clientVersion,timeZoneId})` after each connection and reconnect to refresh server state; `SessionChanged`, `SettingsChanged`, and matching `ReloginRequired` events are handled without uploading client activity.
+- Reconnects use a fresh connection and a refreshed access token, with bounded retries and a manual tray retry after repeated outages. While SignalR is unavailable, the client refreshes the current session every 15 seconds through the documented `GET /api/Attendance/tracker/current`. `SettingsChanged` updates only the in-memory settings snapshot; it does not change tracking behavior or work-hours calculations.
 - **Log out** from the tray's right-click menu revokes this device on the server, removes the saved profile, and closes the app.
-- This stage verifies authentication only. It does **not** yet upload activity events or sessions to the ERP server.
+- The project and session remain server-owned and read-only. Local tracking, SQLite history, reports, and offline behavior remain local; activity-event and client-session synchronization is not implemented.
 
 ---
 
@@ -278,7 +282,7 @@ a report.
 python -m pytest tests -q
 ```
 
-The suite has **335 tests** and is fully offline: grace model, interval algebra, presence-credit cap, overtime state machine, meeting/break accounting (D1/D2), non-work-day overtime (D3), migrations (including a simulated crash), retention aggregation, holiday import, CSV encoding, projects, updater path safety, pause sessions, i18n key coverage, logging/rotation/crash capture/diagnostics bundles and the dashboard (including `</script>` escaping).
+The suite has **362 tests** and is fully offline: grace model, interval algebra, presence-credit cap, overtime state machine, meeting/break accounting (D1/D2), non-work-day overtime (D3), migrations (including a simulated crash), retention aggregation, holiday import, CSV encoding, projects, updater path safety, pause sessions, i18n key coverage, logging/rotation/crash capture/diagnostics bundles, ERP sign-in/API/SignalR behavior and the dashboard (including `</script>` escaping).
 
 A single instance per Windows session is enforced with the `Local\TimeTrackerSingleton` mutex, so a second Windows user (RDP / fast user switching) gets their own instance.
 
