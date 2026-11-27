@@ -175,6 +175,37 @@ class TestTrackerCurrentProject(unittest.TestCase):
         self.assertIsNone(self.tracker.current_project_id)
         self.assertEqual(self.db.get_setting("current_project_id"), "")
 
+    def test_remote_work_session_blocks_local_project_override(self) -> None:
+        self.tracker.set_current_project(self.pid)
+        self.tracker.set_remote_work_session_active(True)
+
+        self.tracker.set_current_project(None)
+        self.assertEqual(self.tracker.current_project_id, self.pid)
+        self.assertEqual(self.db.get_setting("current_project_id"), str(self.pid))
+
+        self.tracker.set_remote_work_session_active(False)
+        self.tracker.set_current_project(None)
+        self.assertIsNone(self.tracker.current_project_id)
+
+    def test_remote_snapshot_tags_confirmation_without_changing_local_project(self) -> None:
+        self.tracker.set_current_project(self.pid)
+        self.tracker.set_remote_work_snapshot(
+            attendance_id="123",
+            project_id="25",
+            project_name="ERP Project",
+            active=True,
+        )
+
+        self.tracker.record_active_confirmation(1_700_000_000)
+        rows = self.db.get_input_events_with_remote_details(
+            1_699_999_000,
+            1_700_001_000,
+        )
+        self.assertEqual(rows[-1][3], self.pid)
+        self.assertEqual(rows[-1][4], "123")
+        self.assertEqual(rows[-1][5], "25")
+        self.assertEqual(rows[-1][6], "ERP Project")
+
     def test_started_sessions_carry_project(self) -> None:
         self.tracker.set_current_project(self.pid)
         self.tracker.toggle_meeting()

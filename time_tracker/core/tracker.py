@@ -369,6 +369,10 @@ class ActivityTracker:
 
         # Project attribution (optional tags on tracked time)
         self._current_project_id: int | None = self._load_current_project()
+        self._remote_work_session_active: bool = False
+        self._remote_attendance_id: str | None = None
+        self._remote_project_id: str | None = None
+        self._remote_project_name: str | None = None
 
         # Metrics cache (P1-3): the day is recomputed at most every 30 s and the
         # week/month ranges at most once a minute, unless a mutation forces it.
@@ -492,9 +496,40 @@ class ActivityTracker:
         project = self.db.get_project(self._current_project_id)
         return str(project["name"]) if project else ""
 
+    @property
+    def remote_work_session_active(self) -> bool:
+        return self._remote_work_session_active
+
+    @_command
+    def set_remote_work_session_active(self, active: bool) -> None:
+        """Apply only server-authoritative Remote Work lifecycle state."""
+        self._remote_work_session_active = bool(active)
+        if not active:
+            self._remote_attendance_id = None
+            self._remote_project_id = None
+            self._remote_project_name = None
+
+    @_command
+    def set_remote_work_snapshot(
+        self,
+        *,
+        attendance_id: str | None,
+        project_id: str | None,
+        project_name: str | None,
+        active: bool,
+    ) -> None:
+        """Keep server session/project identity separate from local project IDs."""
+        self._remote_work_session_active = bool(active and attendance_id)
+        self._remote_attendance_id = str(attendance_id) if active and attendance_id else None
+        self._remote_project_id = str(project_id) if active and project_id is not None else None
+        self._remote_project_name = str(project_name) if active and project_name else None
+
     @_command
     def set_current_project(self, project_id: int | None) -> None:
         """Select the project that subsequent active time is attributed to."""
+        if self._remote_work_session_active:
+            logger.info("Ignoring local project selection while a server Remote Work session is active.")
+            return
         if project_id is not None:
             project = self.db.get_project(project_id)
             if not project or int(project.get("archived") or 0) == 1:
@@ -1019,6 +1054,9 @@ class ActivityTracker:
                     app_name=active_app,
                     source="input",
                     project_id=self._current_project_id,
+                    remote_attendance_id=self._remote_attendance_id,
+                    remote_project_id=self._remote_project_id,
+                    remote_project_name=self._remote_project_name,
                 )
                 if self._active_check_idle_mode:
                     self._active_check_idle_mode = False
@@ -1169,6 +1207,9 @@ class ActivityTracker:
             app_name=active_app,
             source="confirm",
             project_id=self._current_project_id,
+            remote_attendance_id=self._remote_attendance_id,
+            remote_project_id=self._remote_project_id,
+            remote_project_name=self._remote_project_name,
         )
         self._last_input_ts = ts
 

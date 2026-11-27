@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable, Literal, overload
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -25,6 +26,28 @@ from time_tracker.system.tts_auth import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def parse_utc_iso(value: str | None, field_name: str) -> datetime | None:
+    """Parse an API UTC timestamp without accepting timezone-ambiguous strings."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise TrackerApiError(200, "invalid_response", f"{field_name} must be a UTC ISO-8601 string or null.")
+    text = value.strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise TrackerApiError(200, "invalid_response", f"{field_name} must be an ISO-8601 timestamp.") from exc
+    if parsed.tzinfo is None:
+        raise TrackerApiError(200, "invalid_response", f"{field_name} must include an explicit timezone.")
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_utc_iso(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 class TrackerApiError(RuntimeError):
@@ -278,6 +301,9 @@ def parse_hello(payload: Any) -> TrackerHelloData:
     server_time = data.get("serverTimeUtc")
     if server_time is not None and not isinstance(server_time, str):
         raise _invalid_response("Hello response serverTimeUtc must be a string or null.")
+    server_time_parsed = parse_utc_iso(server_time, "Hello response serverTimeUtc")
+    if server_time_parsed is not None:
+        server_time = _format_utc_iso(server_time_parsed)
 
     return TrackerHelloData(
         session=parse_session(data["session"]),
@@ -296,6 +322,9 @@ def parse_session(value: Any) -> TrackerWorkSession | None:
     project_id = _required_id(data, "projectId")
     project_name = _required_string(data, "projectName", nullable=True)
     check_in_utc = _required_string(data, "checkInUtc", nullable=True)
+    check_in_parsed = parse_utc_iso(check_in_utc, "session checkInUtc")
+    if check_in_parsed is not None:
+        check_in_utc = _format_utc_iso(check_in_parsed)
     is_open = _required_bool(data, "open")
     tracker_allowed = _required_bool(data, "trackerAllowed")
     return TrackerWorkSession(

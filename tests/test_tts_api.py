@@ -111,6 +111,16 @@ def test_get_current_session_uses_documented_http_fallback(monkeypatch: pytest.M
     assert result is None
 
 
+def test_parse_utc_iso_normalizes_offset_and_rejects_naive_time() -> None:
+    parsed = tts_api.parse_utc_iso("2026-11-27T09:30:00+02:00", "session checkInUtc")
+    assert parsed is not None
+    assert parsed.isoformat() == "2026-11-27T07:30:00+00:00"
+
+    with pytest.raises(tts_api.TrackerApiError) as raised:
+        tts_api.parse_utc_iso("2026-11-27T09:30:00", "session checkInUtc")
+    assert raised.value.code == "invalid_response"
+
+
 def test_unauthorized_request_refreshes_secure_device_token_and_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

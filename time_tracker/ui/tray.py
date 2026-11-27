@@ -166,6 +166,16 @@ class TrayApp:
         )
         if self.api_client is not None:
             self.api_client.set_relogin_handler(self._handle_relogin_required)
+        try:
+            active_remote = self.db.get_active_remote_work_session()
+        except Exception:
+            active_remote = None
+        self.tracker.set_remote_work_snapshot(
+            attendance_id=str(active_remote["attendance_id"]) if active_remote else None,
+            project_id=str(active_remote["project_id"]) if active_remote and active_remote.get("project_id") is not None else None,
+            project_name=str(active_remote["project_name"]) if active_remote and active_remote.get("project_name") else None,
+            active=active_remote is not None,
+        )
 
         self._icons: dict[str, Image.Image] = {}
         self._load_icons()
@@ -346,12 +356,14 @@ class TrayApp:
         except Exception:
             projects = []
         current_project = self.tracker.current_project_id
+        remote_project_locked = self.tracker.remote_work_session_active
         project_items = [
             MenuItem(
                 mt("menu_project_none"),
                 lambda icon, item: self._select_project(None),
                 checked=lambda item: self.tracker.current_project_id is None,
                 radio=True,
+                enabled=not remote_project_locked,
             )
         ]
         def _make_project_action(p_id: int):
@@ -368,6 +380,7 @@ class TrayApp:
                     _make_project_action(pid),
                     checked=_make_project_checked(pid),
                     radio=True,
+                    enabled=not remote_project_locked,
                 )
             )
 
@@ -486,6 +499,7 @@ class TrayApp:
         with self._server_state_lock:
             self._server_snapshot = snapshot
             self._server_load_state = "ready"
+        self._sync_remote_work_snapshot(snapshot.session, "hello")
         self._on_server_state_change()
 
     def _on_signalr_session_changed(self, session: TrackerWorkSession | None) -> None:
@@ -494,7 +508,46 @@ class TrayApp:
                 self._server_snapshot = TrackerHelloData(session, None, None, (), None)
             else:
                 self._server_snapshot = replace(self._server_snapshot, session=session)
+        self._sync_remote_work_snapshot(session, "signalr")
         self._on_server_state_change()
+
+    def _sync_remote_work_snapshot(
+        self,
+        session: TrackerWorkSession | None,
+        source: str,
+    ) -> None:
+        """Persist and apply only server-provided Remote Work lifecycle state."""
+        if session is not None and session.attendance_id and session.is_open:
+            try:
+                self.db.save_remote_work_session(
+                    attendance_id=str(session.attendance_id),
+                    project_id=session.project_id,
+                    project_name=session.project_name,
+                    check_in_utc=session.check_in_utc,
+                    is_open=True,
+                    tracker_allowed=session.tracker_allowed,
+                    source=source,
+                )
+            except Exception as exc:
+                logger.exception("Could not persist the TTS Remote Work session snapshot: %s", exc)
+            self.tracker.set_remote_work_snapshot(
+                attendance_id=session.attendance_id,
+                project_id=session.project_id,
+                project_name=session.project_name,
+                active=True,
+            )
+            return
+
+        try:
+            self.db.clear_active_remote_work_sessions(source=source)
+        except Exception as exc:
+            logger.exception("Could not clear the TTS Remote Work session snapshot: %s", exc)
+        self.tracker.set_remote_work_snapshot(
+            attendance_id=None,
+            project_id=None,
+            project_name=None,
+            active=False,
+        )
 
     def _on_signalr_settings_changed(self, settings: TrackerServerSettings) -> None:
         with self._server_state_lock:
@@ -578,6 +631,7 @@ class TrayApp:
                 if load_hello or self._signalr_status != "connected":
                     self._server_snapshot = snapshot
                 self._server_load_state = "ready"
+            self._sync_remote_work_snapshot(snapshot.session, "hello" if load_hello else "poll")
             if load_hello and self.signalr_client is not None:
                 self.signalr_client.start()
                 self._start_server_fallback_polling()
@@ -791,6 +845,8 @@ class TrayApp:
 
     def _select_project(self, project_id: int | None) -> None:
         """Attribute following active time to the chosen project."""
+        if self.tracker.remote_work_session_active:
+            return
         try:
             self.tracker.set_current_project(project_id)
             name = self.tracker.current_project_name or t("menu_project_none", self.config.language)

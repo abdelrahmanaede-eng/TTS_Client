@@ -35,6 +35,54 @@ class TestConfig(unittest.TestCase):
 
 
 class TestDatabase(unittest.TestCase):
+    def test_remote_work_session_snapshot_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db = Database(Path(tmp_dir) / "data.db")
+            db.save_remote_work_session(
+                attendance_id="123",
+                project_id="25",
+                project_name="ERP Project",
+                check_in_utc="2026-11-27T07:00:00.000Z",
+                is_open=True,
+                tracker_allowed=True,
+                source="hello",
+            )
+
+            active = db.get_active_remote_work_session()
+            self.assertIsNotNone(active)
+            assert active is not None
+            self.assertEqual(active["attendance_id"], "123")
+            self.assertEqual(active["project_id"], "25")
+            self.assertEqual(active["project_name"], "ERP Project")
+            self.assertEqual(active["is_open"], 1)
+
+            db.clear_active_remote_work_sessions(source="signalr")
+            self.assertIsNone(db.get_active_remote_work_session())
+
+    def test_input_event_keeps_remote_session_and_project_separate_from_local_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db = Database(Path(tmp_dir) / "data.db")
+            local_project = db.add_project("Local Report Project")
+
+            db.record_input_event(
+                1_700_000_000,
+                app_name="chrome.exe",
+                source="input",
+                project_id=local_project,
+                remote_attendance_id="123",
+                remote_project_id="25",
+                remote_project_name="ERP Project",
+            )
+
+            rows = db.get_input_events_with_remote_details(
+                1_699_999_000,
+                1_700_001_000,
+            )
+            self.assertEqual(
+                rows,
+                [(1_700_000_000, "chrome.exe", "input", local_project, "123", "25", "ERP Project")],
+            )
+
     def test_input_events_and_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "data.db"
@@ -85,6 +133,67 @@ class TestDatabase(unittest.TestCase):
             dates = db.get_recorded_dates()
             self.assertIsInstance(dates, list)
             self.assertGreaterEqual(len(dates), 1)
+
+    def test_remote_segment_outbox_is_durable_and_deduplicates_by_segment_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db = Database(Path(tmp_dir) / "data.db")
+            segment_id = db.save_remote_activity_segment(
+                attendance_id="123",
+                project_id="25",
+                project_name="ERP",
+                application="chrome.exe",
+                start_utc="2026-11-27T07:00:00.000Z",
+                end_utc="2026-11-27T07:30:00.000Z",
+                original_start_epoch=1764226800,
+                original_end_epoch=1764228600,
+            )
+            first_outbox_id = db.queue_remote_activity_segment(
+                segment_id=segment_id,
+                payload={"attendanceId": "123", "segmentId": segment_id},
+            )
+            second_outbox_id = db.queue_remote_activity_segment(
+                segment_id=segment_id,
+                payload={"attendanceId": "123", "segmentId": segment_id},
+            )
+
+            self.assertEqual(first_outbox_id, second_outbox_id)
+            pending = db.get_pending_remote_segment_outbox()
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0]["segment_id"], segment_id)
+            self.assertEqual(pending[0]["state"], "pending")
+
+            db.update_remote_segment_outbox_state(
+                segment_id=segment_id,
+                state="synced",
+                server_ack_status="unchanged",
+            )
+            self.assertEqual(db.get_pending_remote_segment_outbox(), [])
+
+    def test_retention_preserves_remote_attributed_raw_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db = Database(Path(tmp_dir) / "data.db")
+            db.record_input_event(
+                1_700_000_000,
+                app_name="chrome.exe",
+                source="input",
+                remote_attendance_id="123",
+                remote_project_id="25",
+                remote_project_name="ERP",
+            )
+            db.record_input_event(
+                1_699_999_999,
+                app_name="local.exe",
+                source="input",
+            )
+
+            deleted = db.delete_input_events_before(1_700_000_000)
+            self.assertEqual(deleted, 1)
+            rows = db.get_input_events_with_remote_details(
+                1_699_999_000,
+                1_700_000_002,
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0][4], "123")
 
     def test_orphan_session_cleanup_with_heartbeat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -14,7 +14,8 @@ import sqlite3
 import tempfile
 import threading
 import time
-from datetime import date, datetime
+import uuid
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
@@ -26,7 +27,7 @@ T = TypeVar("T")
 
 # Schema version written to the schema_version table. Bump it whenever a
 # migration is added; migrations themselves stay idempotent.
-SCHEMA_VERSION = 6  # v6: persisted day/change_day columns for PERF-06
+SCHEMA_VERSION = 8  # v8: Remote Work segments and durable upload Outbox
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -37,7 +38,10 @@ CREATE TABLE IF NOT EXISTS input_events (
     ts INTEGER PRIMARY KEY,
     app_name TEXT,
     source TEXT DEFAULT 'input',
-    day TEXT
+    day TEXT,
+    remote_attendance_id TEXT,
+    remote_project_id TEXT,
+    remote_project_name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -66,6 +70,53 @@ CREATE TABLE IF NOT EXISTS projects (
     color TEXT
 );
 
+CREATE TABLE IF NOT EXISTS remote_work_sessions (
+    attendance_id TEXT PRIMARY KEY,
+    project_id TEXT,
+    project_name TEXT,
+    check_in_utc TEXT,
+    check_out_utc TEXT,
+    is_open INTEGER NOT NULL DEFAULT 0,
+    tracker_allowed INTEGER NOT NULL DEFAULT 0,
+    first_seen_utc TEXT,
+    last_seen_utc TEXT,
+    source TEXT NOT NULL,
+    reconciled_utc TEXT
+);
+
+CREATE TABLE IF NOT EXISTS remote_activity_segments (
+    segment_id TEXT PRIMARY KEY,
+    attendance_id TEXT NOT NULL,
+    project_id TEXT,
+    project_name TEXT,
+    application TEXT,
+    start_utc TEXT NOT NULL,
+    end_utc TEXT NOT NULL,
+    original_start_epoch INTEGER NOT NULL,
+    original_end_epoch INTEGER NOT NULL,
+    payload_hash TEXT,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS remote_segment_outbox (
+    outbox_id TEXT PRIMARY KEY,
+    segment_id TEXT NOT NULL UNIQUE,
+    batch_id TEXT,
+    payload_json TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('pending', 'uploading', 'synced', 'failed', 'terminal_outside', 'terminal_refused', 'conflict')),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at_utc TEXT,
+    last_attempt_at_utc TEXT,
+    last_error_code TEXT,
+    last_error_message TEXT,
+    server_ack_status TEXT,
+    server_ack_at_utc TEXT,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL,
+    FOREIGN KEY(segment_id) REFERENCES remote_activity_segments(segment_id) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS daily_summary (
     date TEXT PRIMARY KEY,
     worked_sec INTEGER NOT NULL DEFAULT 0,
@@ -83,6 +134,9 @@ CREATE TABLE IF NOT EXISTS daily_summary (
 CREATE INDEX IF NOT EXISTS idx_sessions_start_end ON sessions (start_ts, end_ts);
 CREATE INDEX IF NOT EXISTS idx_sessions_open ON sessions (session_type, end_ts);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON input_events (ts);
+CREATE INDEX IF NOT EXISTS idx_remote_work_sessions_open ON remote_work_sessions (is_open, attendance_id);
+CREATE INDEX IF NOT EXISTS idx_remote_segments_attendance ON remote_activity_segments (attendance_id, start_utc);
+CREATE INDEX IF NOT EXISTS idx_remote_outbox_state ON remote_segment_outbox (state, next_attempt_at_utc);
 -- PERF-06 day indexes are created in _init_db() after the column migrations,
 -- because legacy tables gain the columns later in this same function.
 """
@@ -262,6 +316,12 @@ class Database:
                         "UPDATE input_events SET day = strftime('%Y-%m-%d', ts, 'unixepoch', 'localtime') "
                         "WHERE day IS NULL"
                     )
+                if "remote_attendance_id" not in ev_cols:
+                    cursor.execute("ALTER TABLE input_events ADD COLUMN remote_attendance_id TEXT")
+                if "remote_project_id" not in ev_cols:
+                    cursor.execute("ALTER TABLE input_events ADD COLUMN remote_project_id TEXT")
+                if "remote_project_name" not in ev_cols:
+                    cursor.execute("ALTER TABLE input_events ADD COLUMN remote_project_name TEXT")
 
                 # 2. Add the new columns first so the constraint migration below
                 # can copy them even on very old databases.
@@ -350,6 +410,10 @@ class Database:
                 # 5. Indexes for the attribution columns
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_events_project ON input_events (project_id)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON input_events (ts)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_remote_session ON input_events (remote_attendance_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_remote_project ON input_events (remote_project_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_remote_segments_attendance ON remote_activity_segments (attendance_id, start_utc)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_remote_outbox_state ON remote_segment_outbox (state, next_attempt_at_utc)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions (project_id)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_summary_date ON daily_summary (date)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_events_day ON input_events (day)")
@@ -391,23 +455,77 @@ class Database:
         app_name: str | None = None,
         source: str = "input",
         project_id: int | None = None,
+        remote_attendance_id: str | None = None,
+        remote_project_id: str | None = None,
+        remote_project_name: str | None = None,
     ) -> bool:
         """Record a single timestamp, active app, source, and project into input_events."""
         def op(conn: sqlite3.Connection) -> bool:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO input_events (ts, app_name, source, project_id, day)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO input_events (
+                    ts, app_name, source, project_id, day,
+                    remote_attendance_id, remote_project_id, remote_project_name
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ts) DO UPDATE SET
                     app_name = COALESCE(excluded.app_name, input_events.app_name),
                     project_id = COALESCE(excluded.project_id, input_events.project_id),
+                    remote_attendance_id = COALESCE(excluded.remote_attendance_id, input_events.remote_attendance_id),
+                    remote_project_id = COALESCE(excluded.remote_project_id, input_events.remote_project_id),
+                    remote_project_name = COALESCE(excluded.remote_project_name, input_events.remote_project_name),
                     source = CASE WHEN excluded.source = 'confirm' THEN 'confirm' ELSE input_events.source END
                 """,
-                (int(ts), app_name or "Unknown", source, project_id, self._day_from_ts(int(ts))),
+                (
+                    int(ts),
+                    app_name or "Unknown",
+                    source,
+                    project_id,
+                    self._day_from_ts(int(ts)),
+                    remote_attendance_id,
+                    remote_project_id,
+                    remote_project_name,
+                ),
             )
             self._bump_day_data_version(conn, self._day_from_ts(ts))
             return cursor.rowcount > 0
+
+        return self._execute_with_retry(op)
+
+    def get_input_events_with_remote_details(
+        self, start_ts: int, end_ts: int
+    ) -> list[tuple[int, str, str, int | None, str | None, str | None, str | None]]:
+        """Return local and server Remote Work attribution for activity evidence."""
+        def op(conn: sqlite3.Connection) -> list[tuple[int, str, str, int | None, str | None, str | None, str | None]]:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT ts, COALESCE(app_name, 'Unknown') AS app,
+                       COALESCE(source, 'input') AS src,
+                       project_id, remote_attendance_id,
+                       remote_project_id, remote_project_name
+                FROM input_events
+                WHERE ts >= ? AND ts < ?
+                ORDER BY ts ASC
+                """,
+                (int(start_ts), int(end_ts)),
+            )
+            rows = []
+            for row in cursor.fetchall():
+                pid = row["project_id"]
+                rows.append(
+                    (
+                        int(row["ts"]),
+                        str(row["app"]),
+                        str(row["src"]),
+                        int(pid) if pid is not None else None,
+                        str(row["remote_attendance_id"]) if row["remote_attendance_id"] is not None else None,
+                        str(row["remote_project_id"]) if row["remote_project_id"] is not None else None,
+                        str(row["remote_project_name"]) if row["remote_project_name"] is not None else None,
+                    )
+                )
+            return rows
 
         return self._execute_with_retry(op)
 
@@ -529,6 +647,261 @@ class Database:
             return rows
 
         return self._execute_with_retry(op)
+
+    # ---------------------------------------------------------
+    # Remote Work Session Snapshots
+    # ---------------------------------------------------------
+    def save_remote_work_session(
+        self,
+        *,
+        attendance_id: str,
+        project_id: str | None,
+        project_name: str | None,
+        check_in_utc: str | None,
+        is_open: bool,
+        tracker_allowed: bool,
+        source: str,
+        check_out_utc: str | None = None,
+    ) -> None:
+        """Persist the latest server-authoritative Remote Work snapshot."""
+        now_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        def op(conn: sqlite3.Connection) -> None:
+            cursor = conn.cursor()
+            cursor.execute("SELECT first_seen_utc FROM remote_work_sessions WHERE attendance_id = ?", (attendance_id,))
+            existing = cursor.fetchone()
+            first_seen = str(existing["first_seen_utc"]) if existing and existing["first_seen_utc"] else now_utc
+            cursor.execute(
+                """
+                INSERT INTO remote_work_sessions (
+                    attendance_id, project_id, project_name, check_in_utc, check_out_utc,
+                    is_open, tracker_allowed, first_seen_utc, last_seen_utc, source, reconciled_utc
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(attendance_id) DO UPDATE SET
+                    project_id = excluded.project_id,
+                    project_name = excluded.project_name,
+                    check_in_utc = excluded.check_in_utc,
+                    check_out_utc = excluded.check_out_utc,
+                    is_open = excluded.is_open,
+                    tracker_allowed = excluded.tracker_allowed,
+                    last_seen_utc = excluded.last_seen_utc,
+                    source = excluded.source,
+                    reconciled_utc = excluded.reconciled_utc
+                """,
+                (
+                    attendance_id,
+                    project_id,
+                    project_name,
+                    check_in_utc,
+                    check_out_utc,
+                    1 if is_open else 0,
+                    1 if tracker_allowed else 0,
+                    first_seen,
+                    now_utc,
+                    source,
+                    now_utc,
+                ),
+            )
+
+        self._execute_with_retry(op)
+
+    def clear_active_remote_work_sessions(self, *, source: str) -> None:
+        """Mark server snapshots as closed; keep historical snapshots for audit/reconciliation."""
+        now_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        def op(conn: sqlite3.Connection) -> None:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE remote_work_sessions
+                SET is_open = 0,
+                    last_seen_utc = ?,
+                    source = ?,
+                    reconciled_utc = ?
+                WHERE is_open = 1
+                """,
+                (now_utc, source, now_utc),
+            )
+
+        self._execute_with_retry(op)
+
+    def get_active_remote_work_session(self) -> dict[str, Any] | None:
+        def op(conn: sqlite3.Connection) -> dict[str, Any] | None:
+            row = conn.execute(
+                """
+                SELECT attendance_id, project_id, project_name, check_in_utc, check_out_utc,
+                       is_open, tracker_allowed, first_seen_utc, last_seen_utc, source, reconciled_utc
+                FROM remote_work_sessions
+                WHERE is_open = 1
+                ORDER BY check_in_utc DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+        return self._execute_with_retry(op)
+
+    def save_remote_activity_segment(
+        self,
+        *,
+        attendance_id: str,
+        project_id: str | None,
+        project_name: str | None,
+        application: str | None,
+        start_utc: str,
+        end_utc: str,
+        original_start_epoch: int,
+        original_end_epoch: int,
+        segment_id: str | None = None,
+        payload_hash: str | None = None,
+    ) -> str:
+        """Persist an immutable local Remote Work Segment candidate."""
+        stable_id = segment_id or str(uuid.uuid4())
+        now_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        def op(conn: sqlite3.Connection) -> str:
+            conn.execute(
+                """
+                INSERT INTO remote_activity_segments (
+                    segment_id, attendance_id, project_id, project_name, application,
+                    start_utc, end_utc, original_start_epoch, original_end_epoch,
+                    payload_hash, created_at_utc, updated_at_utc
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(segment_id) DO NOTHING
+                """,
+                (
+                    stable_id,
+                    attendance_id,
+                    project_id,
+                    project_name,
+                    application,
+                    start_utc,
+                    end_utc,
+                    int(original_start_epoch),
+                    int(original_end_epoch),
+                    payload_hash,
+                    now_utc,
+                    now_utc,
+                ),
+            )
+            return stable_id
+
+        return self._execute_with_retry(op)
+
+    def queue_remote_activity_segment(
+        self,
+        *,
+        segment_id: str,
+        payload: dict[str, Any],
+    ) -> str:
+        """Create or preserve one durable Outbox row for a Segment."""
+        outbox_id = str(uuid.uuid4())
+        now_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        def op(conn: sqlite3.Connection) -> str:
+            existing = conn.execute(
+                "SELECT outbox_id FROM remote_segment_outbox WHERE segment_id = ?",
+                (segment_id,),
+            ).fetchone()
+            if existing:
+                return str(existing["outbox_id"])
+            conn.execute(
+                """
+                INSERT INTO remote_segment_outbox (
+                    outbox_id, segment_id, batch_id, payload_json, state,
+                    attempt_count, created_at_utc, updated_at_utc
+                )
+                VALUES (?, ?, NULL, ?, 'pending', 0, ?, ?)
+                """,
+                (
+                    outbox_id,
+                    segment_id,
+                    json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                    now_utc,
+                    now_utc,
+                ),
+            )
+            return outbox_id
+
+        return self._execute_with_retry(op)
+
+    def get_pending_remote_segment_outbox(self, limit: int = 500) -> list[dict[str, Any]]:
+        def op(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+            rows = conn.execute(
+                """
+                SELECT o.*, s.attendance_id, s.project_id, s.project_name,
+                       s.application, s.start_utc, s.end_utc
+                FROM remote_segment_outbox o
+                JOIN remote_activity_segments s ON s.segment_id = o.segment_id
+                WHERE o.state IN ('pending', 'failed')
+                ORDER BY o.created_at_utc ASC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+        return self._execute_with_retry(op)
+
+    def update_remote_segment_outbox_state(
+        self,
+        *,
+        segment_id: str,
+        state: str,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        server_ack_status: str | None = None,
+        batch_id: str | None = None,
+    ) -> None:
+        allowed = {
+            "pending",
+            "uploading",
+            "synced",
+            "failed",
+            "terminal_outside",
+            "terminal_refused",
+            "conflict",
+        }
+        if state not in allowed:
+            raise ValueError(f"Invalid Remote Work Outbox state: {state}")
+        now_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        def op(conn: sqlite3.Connection) -> None:
+            conn.execute(
+                """
+                UPDATE remote_segment_outbox
+                SET state = ?,
+                    attempt_count = CASE WHEN ? IN ('uploading', 'failed') THEN attempt_count + 1 ELSE attempt_count END,
+                    next_attempt_at_utc = CASE WHEN ? = 'failed' THEN next_attempt_at_utc ELSE NULL END,
+                    last_attempt_at_utc = ?,
+                    last_error_code = ?,
+                    last_error_message = ?,
+                    server_ack_status = COALESCE(?, server_ack_status),
+                    server_ack_at_utc = CASE WHEN ? IN ('synced', 'terminal_outside', 'terminal_refused', 'conflict')
+                                             THEN ? ELSE server_ack_at_utc END,
+                    batch_id = COALESCE(?, batch_id),
+                    updated_at_utc = ?
+                WHERE segment_id = ?
+                """,
+                (
+                    state,
+                    state,
+                    state,
+                    now_utc,
+                    error_code,
+                    error_message,
+                    server_ack_status,
+                    state,
+                    now_utc,
+                    batch_id,
+                    now_utc,
+                    segment_id,
+                ),
+            )
+
+        self._execute_with_retry(op)
 
     # ---------------------------------------------------------
     # Sessions
@@ -813,7 +1186,14 @@ class Database:
         """Delete input events strictly older than ``cutoff_ts``. Returns rows removed."""
         def op(conn: sqlite3.Connection) -> int:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM input_events WHERE ts < ?", (int(cutoff_ts),))
+            cursor.execute(
+                """
+                DELETE FROM input_events
+                WHERE ts < ?
+                  AND remote_attendance_id IS NULL
+                """,
+                (int(cutoff_ts),),
+            )
             return max(0, cursor.rowcount)
 
         return self._execute_with_retry(op)
